@@ -93,7 +93,7 @@ def salvar_no_github(df, nome_arquivo, sha=None):
         
     requests.put(url, headers=headers, json=payload)
 
-# Regras estáticas de prazos
+# Regras estáticas de prazos do Sinfonia Hair
 PRAZOS_SERVICOS = {
     "Aplicação de alongamento em gel": 30, "Aplicação de coloração": 40, 
     "Cauterização/queratinização capilar": 30, "Coloração 1/2": 45, "Coloração capilar": 40, 
@@ -162,6 +162,7 @@ if file_clientes and file_agendamentos:
     for _, lin in df_novos_agendamentos.iterrows():
         for s in re.split(r'[,/+\\]', str(lin['Serviço(s)'])):
             if s.strip() and s.strip() != 'nan':
+                # LINHA CORRIGIDA SEM O ERRO DE SINTAXE:
                 linhas_exp.append({
                     'Cliente': lin['Cliente'], 'Data': lin['Data'],
                     'Horário': lin.get('Horário', ''), 'Profissional': lin.get('Profissional', ''),
@@ -169,10 +170,9 @@ if file_clientes and file_agendamentos:
                 })
     df_novos_tratados = pd.DataFrame(linhas_exp)
 
-    # 🛰️ INTEGRAÇÃO E SINCRONIZAÇÃO EM NUVEM VIA GITHUB (BLINDADO CONTRA ARQUIVOS FANTASMAS)
+    # 🛰️ INTEGRAÇÃO E SINCRONIZAÇÃO EM NUVEM VIA GITHUB
     df_hist_agend, sha_agend = carregar_do_github("BASE_HISTORICA_AGENDAMENTOS.xlsx")
     if df_hist_agend is not None and not df_hist_agend.empty:
-        # Só tenta converter se o arquivo já existir e possuir a coluna
         if 'Data' in df_hist_agend.columns:
             df_hist_agend['Data'] = pd.to_datetime(df_hist_agend['Data'], errors='coerce')
         df_acumulado_agendamentos = pd.concat([df_hist_agend, df_novos_tratados], ignore_index=True)
@@ -191,7 +191,7 @@ if file_clientes and file_agendamentos:
     df_acumulado_clientes.drop_duplicates(subset=['Nome'], keep='last', inplace=True)
     salvar_no_github(df_acumulado_clientes, "BASE_HISTORICA_CLIENTES.xlsx", sha_cli)
 
-    # Motor Analítico de Retorno (Janela estendida para dados históricos de teste)
+    # Motor Analítico de Retorno
     df_ultimos = df_acumulado_agendamentos.groupby(['Cliente', 'Serviço(s)'], as_index=False)['Data'].max()
     lista_op = []
     data_hoje = datetime.now()
@@ -295,7 +295,7 @@ if file_clientes and file_agendamentos:
                 </div>
             """, unsafe_allow_html=True)
     else:
-        st.info("ℹ nighttime: Nenhuma cliente elegível para retorno localizada com os filtros de hoje.")
+        st.info("ℹ️ Nenhuma cliente elegível para retorno localizada com os filtros de hoje.")
 else:
     st.markdown("""
         <div style="text-align: center; padding: 60px 20px; background-color: #1A1A1A; border-radius: 12px; border: 1px solid #2D2D2D; margin-top: 40px;">
