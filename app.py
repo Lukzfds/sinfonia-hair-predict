@@ -41,19 +41,50 @@ st.markdown("""
         stroke: #121212 !important;
     }
 
-    /* Estilização da Barra Lateral */
+    /* Estilização Completa da Barra Lateral e Inputs Ocultos */
     [data-testid="stSidebar"] {
         background-color: #1A1A1A !important;
         border-right: 1px solid #2D2D2D;
     }
-    [data-testid="stSidebar"] * {
+    
+    /* Forçar visibilidade dos textos e labels dentro da barra lateral */
+    [data-testid="stSidebar"] p, 
+    [data-testid="stSidebar"] label, 
+    [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] div {
         color: #FFFFFF !important;
     }
     
-    /* Alinhamento de inputs dentro da sidebar */
-    .stSelectbox label, .stTextInput label {
-        color: #FFC0CB !important;
-        font-weight: 600 !important;
+    /* Ajuste de contraste para Selectbox e Text Input */
+    div[data-baseweb="select"] > div {
+        background-color: #2D2D2D !important;
+        color: #FFFFFF !important;
+        border: 1px solid #444444 !important;
+    }
+    
+    div[data-baseweb="input"] input {
+        background-color: #2D2D2D !important;
+        color: #FFFFFF !important;
+        border: 1px solid #444444 !important;
+    }
+    
+    /* Garante a legibilidade das opções dentro do menu dropdown */
+    ul[role="listbox"] li {
+        background-color: #2D2D2D !important;
+        color: #FFFFFF !important;
+    }
+    ul[role="listbox"] li:hover {
+        background-color: #FFC0CB !important;
+        color: #121212 !important;
+    }
+
+    /* Botão Gravar Data da Sidebar */
+    [data-testid="stSidebar"] button {
+        background-color: #FFC0CB !important;
+        color: #121212 !important;
+        font-weight: bold !important;
+        border: none !important;
+        width: 100% !important;
     }
 
     /* Cards de BI */
@@ -132,7 +163,7 @@ if file_clientes and file_agendamentos:
     df_novos_agendamentos = pd.read_excel(file_agendamentos)
     df_novas_clientes = pd.read_excel(file_clientes)
     
-    # Mapeador inteligente de serviços
+    # Mapeador inteligente de serviços inicial
     col_servico_alvo = None
     for c in df_novos_agendamentos.columns:
         if 'servi' in c.lower() or 'proced' in c.lower():
@@ -153,7 +184,7 @@ if file_clientes and file_agendamentos:
     df_novos_agendamentos['Data'] = pd.to_datetime(df_novos_agendamentos['Data'], dayfirst=True, errors='coerce')
     df_novos_agendamentos = df_novos_agendamentos.dropna(subset=['Data'])
 
-    # Identificação Robusta da coluna de aniversário
+    # Identificação da coluna de aniversário
     coluna_niver = None
     for c in df_novas_clientes.columns:
         if 'anivers' in c.lower() or 'nasc' in c.lower() or 'data' in c.lower():
@@ -163,16 +194,14 @@ if file_clientes and file_agendamentos:
         df_novas_clientes['Aniversário'] = ""
         coluna_niver = 'Aniversário'
 
-    # Padronização de strings limpas para evitar o bug de falso preenchimento
     df_novas_clientes[coluna_niver] = df_novas_clientes[coluna_niver].astype(str).str.replace('NaT', '', case=False).str.replace('nan', '', case=False).str.strip()
     
     # ==========================================
-    # GERENCIADOR INTERATIVO DE ANIVERSÁRIOS (CORRIGIDO)
+    # GERENCIADOR INTERATIVO DE ANIVERSÁRIOS
     # ==========================================
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎂 2. COMPLEMENTO DE CADASTROS")
     
-    # Filtro cirúrgico: considera vazio tudo que não tem tamanho de data mínima
     clientes_sem_niver = df_novas_clientes[df_novas_clientes[coluna_niver].apply(lambda x: len(str(x).strip()) < 5)]
     
     if not clientes_sem_niver.empty:
@@ -185,15 +214,16 @@ if file_clientes and file_agendamentos:
                 if validar_data_aniversario(nova_data):
                     idx = df_novas_clientes[df_novas_clientes['Nome'] == cliente_selecionada].index[0]
                     df_novas_clientes.at[idx, coluna_niver] = nova_data
-                    st.sidebar.success(f"Gravado! O sistema está processando.")
-                    # Salva imediatamente para persistir na próxima execução
+                    st.sidebar.success(f"Gravado! Reprocessando...")
                     df_novas_clientes.to_excel(CAMINHO_HISTORICO_CLIENTES, index=False)
                 else:
                     st.sidebar.error("Formato inválido! Use DD/MM (Ex: 05/12).")
     else:
         st.sidebar.success("✨ Banco de aniversários 100% completo!")
 
-    # Tratamento de Múltiplos Serviços
+    # ==========================================
+    # CORREÇÃO DO TRATAMENTO DE MÚLTIPLOS SERVIÇOS
+    # ==========================================
     df_novos_agendamentos['Serviço(s)'] = df_novos_agendamentos['Serviço(s)'].astype(str).str.strip()
     linhas_expandidas = []
     for _, linha in df_novos_agendamentos.iterrows():
@@ -207,14 +237,21 @@ if file_clientes and file_agendamentos:
                 
     df_novos_agendamentos_tratado = pd.DataFrame(linhas_expandidas)
     
-    # Atualização Automática de Prazos Novos
+    # CORREÇÃO DO KEYERROR: Garante explicitamente a preservação do nome da coluna
+    if not df_novos_agendamentos_tratado.empty:
+        df_novos_agendamentos_tratado.columns = [str(c).strip() for c in df_novos_agendamentos_tratado.columns]
+        if 'Serviço(s)' not in df_novos_agendamentos_tratado.columns:
+            # Caso o pandas tenha alterado o nome por conta da cópia de dicionários de série
+            df_novos_agendamentos_tratado = df_novos_agendamentos_tratado.rename(columns={df_novos_agendamentos_tratado.columns[-1]: 'Serviço(s)'})
+
+    # Atualização de Prazos Novos
     servicos_na_planilha = df_novos_agendamentos_tratado['Serviço(s)'].unique()
     for s in servicos_na_planilha:
         if s not in prazos_servicos:
             prazos_servicos[s] = 30
             pd.DataFrame([{'Serviço': k, 'Dias_Retorno': v} for k, v in prazos_servicos.items()]).to_excel(CAMINHO_CONFIG_PRAZOS, index=False)
 
-    # Consolidação das Bases de Dados Incrementais
+    # Consolidação das Bases Incrementais
     if os.path.exists(CAMINHO_HISTORICO_AGENDAMENTOS):
         df_antigo_agendamentos = pd.read_excel(CAMINHO_HISTORICO_AGENDAMENTOS)
         df_antigo_agendamentos['Data'] = pd.to_datetime(df_antigo_agendamentos['Data'], dayfirst=True)
@@ -262,7 +299,7 @@ if file_clientes and file_agendamentos:
         df_retornos = df_retornos.sort_values(by='Dias de Atraso', ascending=False)
         df_retornos.drop_duplicates(subset=['Cliente'], keep='first', inplace=True)
 
-    # Motor de Aniversariantes (Janela de 2 dias de antecedência)
+    # Motor de Aniversariantes (Faltam 2 dias)
     lista_aniversariantes = []
     data_alvo_niver = data_hoje + timedelta(days=2)
     dia_alvo, mes_alvo = data_alvo_niver.day, data_alvo_niver.month
@@ -306,7 +343,7 @@ if file_clientes and file_agendamentos:
         st.markdown("<br><h2 style='font-size:22px; color:#FFFFFF;'>📱 Painel de Controle de Abordagens</h2>", unsafe_allow_html=True)
         st.markdown("<p style='font-size:13px; color:#A0A0A0; margin-top:-10px;'>Fila inteligente priorizada por nível de atraso. As ações mais urgentes e aniversariantes estão no topo.</p>", unsafe_allow_html=True)
 
-        # Tabela Customizada
+        # Cabeçalho da Tabela Customizada
         st.markdown("""
             <div style="background-color: #222222; padding: 10px 15px; border-radius: 6px 6px 0 0; border: 1px solid #333; font-weight: bold; font-size: 13px;">
                 <div style="display: flex; justify-content: space-between; color: #FFC0CB;">
@@ -357,7 +394,7 @@ if file_clientes and file_agendamentos:
             
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # CORREÇÃO CRÍTICA DO ERRO DE EXCEL (Uso de Buffer em Memória com BytesIO)
+        # Buffer de exportação estável
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
             df_final.to_excel(writer, index=False, sheet_name='Auditoria')
