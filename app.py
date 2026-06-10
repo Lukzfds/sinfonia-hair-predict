@@ -222,29 +222,33 @@ if file_clientes and file_agendamentos:
         st.sidebar.success("✨ Banco de aniversários 100% completo!")
 
     # ==========================================
-    # CORREÇÃO DO TRATAMENTO DE MÚLTIPLOS SERVIÇOS
+    # BLINDAGEM CONTRA KEYERROR: EXPANSÃO DE MÚLTIPLOS SERVIÇOS
     # ==========================================
     df_novos_agendamentos['Serviço(s)'] = df_novos_agendamentos['Serviço(s)'].astype(str).str.strip()
     linhas_expandidas = []
+    
     for _, linha in df_novos_agendamentos.iterrows():
         servicos_separados = re.split(r'[,/+\\]', linha['Serviço(s)'])
         for s in servicos_separados:
             servico_limpo = s.strip()
             if servico_limpo and servico_limpo != 'nan':
-                nova_linha = linha.copy()
-                nova_linha['Serviço(s)'] = servico_limpo
-                linhas_expandidas.append(nova_linha)
+                # Criamos um dicionário puro para evitar perda de nomes de colunas no Pandas
+                linhas_expandidas.append({
+                    'Cliente': linha['Cliente'],
+                    'Data': linha['Data'],
+                    'Horário': linha.get('Horário', ''),
+                    'Profissional': linha.get('Profissional', ''),
+                    'Preço': linha.get('Preço', 0),
+                    'Serviço(s)': servico_limpo
+                })
                 
-    df_novos_agendamentos_tratado = pd.DataFrame(linhas_expandidas)
+    # Constrói o novo DataFrame garantindo as colunas exatas de destino
+    df_novos_agendamentos_tratado = pd.DataFrame(linhas_expandidas, columns=['Cliente', 'Data', 'Horário', 'Profissional', 'Preço', 'Serviço(s)'])
     
-    # CORREÇÃO DO KEYERROR: Garante explicitamente a preservação do nome da coluna
-    if not df_novos_agendamentos_tratado.empty:
-        df_novos_agendamentos_tratado.columns = [str(c).strip() for c in df_novos_agendamentos_tratado.columns]
-        if 'Serviço(s)' not in df_novos_agendamentos_tratado.columns:
-            # Caso o pandas tenha alterado o nome por conta da cópia de dicionários de série
-            df_novos_agendamentos_tratado = df_novos_agendamentos_tratado.rename(columns={df_novos_agendamentos_tratado.columns[-1]: 'Serviço(s)'})
+    # Força a conversão do tipo datatime na nova tabela controlada
+    df_novos_agendamentos_tratado['Data'] = pd.to_datetime(df_novos_agendamentos_tratado['Data'], errors='coerce')
 
-    # Atualização de Prazos Novos
+    # Coleta de serviços únicos diretamente da coluna garantida
     servicos_na_planilha = df_novos_agendamentos_tratado['Serviço(s)'].unique()
     for s in servicos_na_planilha:
         if s not in prazos_servicos:
@@ -299,7 +303,7 @@ if file_clientes and file_agendamentos:
         df_retornos = df_retornos.sort_values(by='Dias de Atraso', ascending=False)
         df_retornos.drop_duplicates(subset=['Cliente'], keep='first', inplace=True)
 
-    # Motor de Aniversariantes (Faltam 2 dias)
+    # Motor de Aniversariantes (Janela de 2 dias de antecedência)
     lista_aniversariantes = []
     data_alvo_niver = data_hoje + timedelta(days=2)
     dia_alvo, mes_alvo = data_alvo_niver.day, data_alvo_niver.month
