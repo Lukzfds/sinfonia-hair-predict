@@ -93,7 +93,7 @@ def salvar_no_github(df, nome_arquivo, sha=None):
         
     requests.put(url, headers=headers, json=payload)
 
-# Regras de Negócio Estabelecidas para o Sinfonia Hair
+# Regras estáticas de prazos
 PRAZOS_SERVICOS = {
     "Aplicação de alongamento em gel": 30, "Aplicação de coloração": 40, 
     "Cauterização/queratinização capilar": 30, "Coloração 1/2": 45, "Coloração capilar": 40, 
@@ -117,10 +117,9 @@ if file_clientes and file_agendamentos:
     df_novos_agendamentos = pd.read_excel(file_agendamentos)
     df_novas_clientes = pd.read_excel(file_clientes)
     
-    # Identificação inteligente de colunas
+    # Padronização inteligente de colunas
     col_servico = next((c for c in df_novos_agendamentos.columns if 'servi' in c.lower() or 'proced' in c.lower()), None)
-    if col_servico: 
-        df_novos_agendamentos.rename(columns={col_servico: 'Serviço(s)'}, inplace=True)
+    if col_servico: df_novos_agendamentos.rename(columns={col_servico: 'Serviço(s)'}, inplace=True)
     
     df_novos_agendamentos['Cliente'] = df_novos_agendamentos['Cliente'].astype(str).str.strip()
     df_novas_clientes['Nome'] = df_novas_clientes['Nome'].astype(str).str.strip()
@@ -134,12 +133,12 @@ if file_clientes and file_agendamentos:
     if coluna_niver not in df_novas_clientes.columns: df_novas_clientes[coluna_niver] = ""
     df_novas_clientes[coluna_niver] = df_novas_clientes[coluna_niver].astype(str).str.replace('NaT', '', case=False).str.replace('nan', '', case=False).str.strip()
 
-    # Sincroniza aniversários inseridos na tela
+    # Aplica aniversários salvos na sessão
     for n_c, n_v in st.session_state['niveis_web'].items():
         idx = df_novas_clientes[df_novas_clientes['Nome'] == n_c].index
         if not idx.empty: df_novas_clientes.loc[idx, coluna_niver] = n_v
 
-    # Barra Lateral de Aniversários
+    # Sidebar Interativa de Aniversários
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎂 2. COMPLEMENTO DE CADASTROS")
     clientes_sem_niver = df_novas_clientes[df_novas_clientes[coluna_niver].apply(lambda x: len(str(x).strip()) < 5)]
@@ -158,19 +157,23 @@ if file_clientes and file_agendamentos:
                 else: st.sidebar.error("Data Inválida.")
     else: st.sidebar.success("Fichas completas!")
 
-    # Processamento e quebra de múltiplos serviços por linha
+    # Desmembramento de Múltiplos Serviços
     linhas_exp = []
     for _, lin in df_novos_agendamentos.iterrows():
         for s in re.split(r'[,/+\\]', str(lin['Serviço(s)'])):
             if s.strip() and s.strip() != 'nan':
+                # Linha corrigida cirurgicamente sem o erro de sintaxe
                 linhas_exp.append({
-                    'Cliente': lin['Cliente'], 'Data': lin['Data'],
-                    'Horário': lin.get('Horário', ''), 'Profissional': lin.get('Profissional', ''),
-                    'Preço': lin.get('Preço', 0), 'Serviço(s)': s.strip()
+                    'Cliente': lin['Cliente'], 
+                    'Data': lin['Data'],
+                    'Horário': lin.get('Horário', ''), 
+                    'Profissional': lin.get('Profissional', ''),
+                    'Preço': lin.get('Preço', 0), 
+                    'Serviço(s)': s.strip()
                 })
     df_novos_tratados = pd.DataFrame(linhas_exp)
 
-    # Sincronização do Histórico no GitHub (Proteção contra arquivos em branco)
+    # Sincronização do Histórico no GitHub
     df_hist_agend, sha_agend = carregar_do_github("BASE_HISTORICA_AGENDAMENTOS.xlsx")
     if df_hist_agend is not None and not df_hist_agend.empty:
         if 'Data' in df_hist_agend.columns:
@@ -191,7 +194,7 @@ if file_clientes and file_agendamentos:
     df_acumulado_clientes.drop_duplicates(subset=['Nome'], keep='last', inplace=True)
     salvar_no_github(df_acumulado_clientes, "BASE_HISTORICA_CLIENTES.xlsx", sha_cli)
 
-    # Motor Analítico Preditivo (Janela de 365 dias para capturar os agendamentos das planilhas de teste)
+    # Motor Analítico de Retorno
     df_ultimos = df_acumulado_agendamentos.groupby(['Cliente', 'Serviço(s)'], as_index=False)['Data'].max()
     lista_op = []
     data_hoje = datetime.now()
@@ -212,7 +215,7 @@ if file_clientes and file_agendamentos:
     if not df_ret.empty:
         df_ret = df_ret.sort_values(by='Dias de Atraso', ascending=False).drop_duplicates(subset=['Cliente'], keep='first')
 
-    # Motor Preditivo de Aniversários (Janela de 2 dias de antecedência)
+    # Motor de Aniversários
     lista_aniv = []
     dt_alvo = data_hoje + timedelta(days=2)
     for _, lin in df_acumulado_clientes.iterrows():
@@ -229,7 +232,7 @@ if file_clientes and file_agendamentos:
             
     df_unificado = pd.concat([df_ret, pd.DataFrame(lista_aniv)], ignore_index=True)
 
-    # Painel Dinâmico de BI
+    # Renderização da UI Gráfica Premium
     col1, col2 = st.columns(2)
     with col1:
         st.markdown(f"""<div class="card-historico"><span style="color:#A0A0A0; font-size:11px; font-weight:bold; text-transform:uppercase;">Banco de Dados Acumulado</span><h2 style="margin:5px 0 0 0; color:#FFC0CB; font-size:32px;">{len(df_acumulado_agendamentos)} <span style="font-size:14px; font-weight:normal; color:#FFFFFF;">linhas</span></h2></div>""", unsafe_allow_html=True)
@@ -248,7 +251,7 @@ if file_clientes and file_agendamentos:
 
         st.markdown("<br><h3 style='color: #FFC0CB;'>📱 Painel de Controle de Abordagens</h3>", unsafe_allow_html=True)
         
-        # Estrutura Visual da Tabela
+        # Cabeçalho da Tabela
         st.markdown("""
             <div style="background-color: #222222; padding: 10px 15px; border-radius: 6px 6px 0 0; border: 1px solid #333; font-weight: bold; font-size: 13px; margin-bottom: 2px;">
                 <div style="display: flex; justify-content: space-between; color: #FFC0CB;">
