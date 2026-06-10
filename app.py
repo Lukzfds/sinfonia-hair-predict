@@ -267,4 +267,4 @@ if file_clientes and file_agendamentos:
             st.markdown(f"""<div class="card-gatilhos"><span style="color:#7f8c8d; font-size:12px; font-weight:bold; text-transform:uppercase;">Contatos Urgentes para Hoje</span><h2 style="margin:5px 0 0 0; color:#1E3E62;">{len(df_final)}</h2></div>""", unsafe_allow_html=True)
             
         st.markdown("### 📱 Painel de Controle de Disparos")
-        st.caption("Fila organizada de forma preditiva. As clientes com maior
+        st.caption("Fila organizada de forma preditiva. As clientes com maior prioridade estão posicionadas no topo da tabela.")
