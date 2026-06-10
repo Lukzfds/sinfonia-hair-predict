@@ -284,11 +284,16 @@ if file_clientes and file_agendamentos:
 
     df_hist_cli, sha_cli = carregar_do_github("BASE_HISTORICA_CLIENTES.xlsx")
     if df_hist_cli is not None and not df_hist_cli.empty:
+        # Remove colunas duplicadas que corrompem o concat
+        df_hist_cli = df_hist_cli.loc[:, ~df_hist_cli.columns.duplicated()]
+        df_novas_clientes = df_novas_clientes.loc[:, ~df_novas_clientes.columns.duplicated()]
         df_acumulado_clientes = pd.concat([df_hist_cli, df_novas_clientes], ignore_index=True)
     else:
         df_acumulado_clientes = df_novas_clientes.copy()
 
+    df_acumulado_clientes = df_acumulado_clientes.loc[:, ~df_acumulado_clientes.columns.duplicated()]
     df_acumulado_clientes.drop_duplicates(subset=['Nome'], keep='last', inplace=True)
+    df_acumulado_clientes = df_acumulado_clientes.reset_index(drop=True)
     salvar_no_github(df_acumulado_clientes, "BASE_HISTORICA_CLIENTES.xlsx", sha_cli)
 
     # Motor analítico
