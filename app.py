@@ -268,6 +268,7 @@ if file_clientes and file_agendamentos:
         df_acumulado_agendamentos = pd.concat([df_hist_agend, df_novos_tratados], ignore_index=True)
     else:
         df_acumulado_agendamentos = df_novos_tratados.copy()
+    df_acumulado_agendamentos = df_acumulado_agendamentos.reset_index(drop=True)
 
     # Garantia final antes do groupby
     df_acumulado_agendamentos = garantir_coluna_servico(df_acumulado_agendamentos)
@@ -278,6 +279,7 @@ if file_clientes and file_agendamentos:
     df_acumulado_agendamentos.drop_duplicates(
         subset=['Data', COL_HORARIO, 'Cliente', COL_SERVICO], keep='last', inplace=True
     )
+    df_acumulado_agendamentos = df_acumulado_agendamentos.reset_index(drop=True)
     salvar_no_github(df_acumulado_agendamentos, "BASE_HISTORICA_AGENDAMENTOS.xlsx", sha_agend)
 
     df_hist_cli, sha_cli = carregar_do_github("BASE_HISTORICA_CLIENTES.xlsx")
@@ -288,14 +290,6 @@ if file_clientes and file_agendamentos:
 
     df_acumulado_clientes.drop_duplicates(subset=['Nome'], keep='last', inplace=True)
     salvar_no_github(df_acumulado_clientes, "BASE_HISTORICA_CLIENTES.xlsx", sha_cli)
-
-    # DIAGNÓSTICO: revela colunas reais antes de crashar
-    st.warning("🔍 Diagnóstico — colunas do df_acumulado_agendamentos:")
-    st.code(str(list(df_acumulado_agendamentos.columns)))
-    st.info(f"Coluna buscada: '{COL_SERVICO}' | Existe: {COL_SERVICO in df_acumulado_agendamentos.columns}")
-    if COL_SERVICO not in df_acumulado_agendamentos.columns:
-        st.error("Coluna de servico nao encontrada. Veja os nomes acima e informe ao suporte.")
-        st.stop()
 
     # Motor analítico
     df_ultimos = df_acumulado_agendamentos.groupby(
