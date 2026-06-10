@@ -18,16 +18,13 @@ st.set_page_config(
 # Estilização de Alto Contraste - Paleta Luxury Dark & Luxury Pink
 st.markdown("""
     <style>
-    /* Forçar Fundo Escuro em toda a aplicação */
-    .stApp {
-        background-color: #121212 !important;
-    }
+    .stApp { background-color: #121212 !important; }
     body, p, span, label, .stMarkdown, h2, h3 {
         color: #FFFFFF !important;
         font-family: 'Segoe UI', system-ui, sans-serif;
     }
     
-    /* CORREÇÃO CRÍTICA DO MENU: Garante que o botão/seta de recolher/expandir fique sempre visível */
+    /* CORREÇÃO DO MENU: Seta de recolher sempre visível */
     [data-testid="stSidebarCollapseButton"] button {
         background-color: #FFC0CB !important;
         color: #121212 !important;
@@ -41,34 +38,23 @@ st.markdown("""
         stroke: #121212 !important;
     }
 
-    /* Estilização Completa da Barra Lateral e Inputs Ocultos */
+    /* Estilização Completa da Barra Lateral */
     [data-testid="stSidebar"] {
         background-color: #1A1A1A !important;
         border-right: 1px solid #2D2D2D;
     }
+    [data-testid="stSidebar"] * { color: #FFFFFF !important; }
     
-    /* Forçar visibilidade dos textos e labels dentro da barra lateral */
-    [data-testid="stSidebar"] p, 
-    [data-testid="stSidebar"] label, 
-    [data-testid="stSidebar"] span,
-    [data-testid="stSidebar"] div {
-        color: #FFFFFF !important;
-    }
-    
-    /* Ajuste de contraste para Selectbox e Text Input */
     div[data-baseweb="select"] > div {
         background-color: #2D2D2D !important;
         color: #FFFFFF !important;
         border: 1px solid #444444 !important;
     }
-    
     div[data-baseweb="input"] input {
         background-color: #2D2D2D !important;
         color: #FFFFFF !important;
         border: 1px solid #444444 !important;
     }
-    
-    /* Garante a legibilidade das opções dentro do menu dropdown */
     ul[role="listbox"] li {
         background-color: #2D2D2D !important;
         color: #FFFFFF !important;
@@ -77,8 +63,6 @@ st.markdown("""
         background-color: #FFC0CB !important;
         color: #121212 !important;
     }
-
-    /* Botão Gravar Data da Sidebar */
     [data-testid="stSidebar"] button {
         background-color: #FFC0CB !important;
         color: #121212 !important;
@@ -117,14 +101,8 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-PASTA_DATA = "data_cache"
-if not os.path.exists(PASTA_DATA): os.makedirs(PASTA_DATA)
-
-CAMINHO_HISTORICO_AGENDAMENTOS = os.path.join(PASTA_DATA, 'BASE_HISTORICA_AGENDAMENTOS.xlsx')
-CAMINHO_HISTORICO_CLIENTES = os.path.join(PASTA_DATA, 'BASE_HISTORICA_CLIENTES.xlsx')
-CAMINHO_CONFIG_PRAZOS = os.path.join(PASTA_DATA, 'CONFIG_PRAZOS_SERVICOS.xlsx')
-
-PRAZOS_PADRAO = {
+# Prazos padrão de retorno do estabelecimento (regras setadas no início)
+PRAZOS_SERVICOS = {
     "Aplicação de alongamento em gel": 30, "Aplicação de coloração": 40, 
     "Cauterização/queratinização capilar": 30, "Coloração 1/2": 45, "Coloração capilar": 40, 
     "Coloração gloss": 40, "Corte de cabelo feminino": 60, "Corte de cabelo infantil": 45, 
@@ -135,13 +113,6 @@ PRAZOS_PADRAO = {
     "Pedicure": 15, "Realinhamento térmico": 90, "Spa nos pés": 30
 }
 
-if os.path.exists(CAMINHO_CONFIG_PRAZOS):
-    df_prazos = pd.read_excel(CAMINHO_CONFIG_PRAZOS)
-    prazos_servicos = dict(zip(df_prazos['Serviço'], df_prazos['Dias_Retorno']))
-else:
-    prazos_servicos = PRAZOS_PADRAO
-    pd.DataFrame([{'Serviço': k, 'Dias_Retorno': v} for k, v in prazos_servicos.items()]).to_excel(CAMINHO_CONFIG_PRAZOS, index=False)
-
 def validar_data_aniversario(texto_data):
     texto_data = str(texto_data).strip()
     match = re.match(r'^(\d{2})/(\d{2})', texto_data)
@@ -151,6 +122,10 @@ def validar_data_aniversario(texto_data):
     dias_por_mes = [0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
     if dia < 1 or dia > dias_por_mes[mes]: return False
     return True
+
+# Inicializa estados de memória do site para os aniversários digitados em tela
+if 'niveis_adicionados' not in st.session_state:
+    st.session_state['niveis_adicionados'] = {}
 
 # ==========================================
 # PAINEL LATERAL DE CARGA (INPUTS)
@@ -163,7 +138,7 @@ if file_clientes and file_agendamentos:
     df_novos_agendamentos = pd.read_excel(file_agendamentos)
     df_novas_clientes = pd.read_excel(file_clientes)
     
-    # Mapeador inteligente de serviços inicial
+    # Padronização e higienização inteligente das colunas
     col_servico_alvo = None
     for c in df_novos_agendamentos.columns:
         if 'servi' in c.lower() or 'proced' in c.lower():
@@ -179,12 +154,13 @@ if file_clientes and file_agendamentos:
     df_novos_agendamentos['Cliente'] = df_novos_agendamentos['Cliente'].astype(str).str.strip()
     df_novas_clientes['Nome'] = df_novas_clientes['Nome'].astype(str).str.strip()
     
+    # Tratamento de datas brasileiras mistas
     if df_novos_agendamentos['Data'].dtype == 'object':
         df_novos_agendamentos['Data'] = df_novos_agendamentos['Data'].astype(str).str.extract(r'(\d{2}/\d{2}/\d{4})')[0]
     df_novos_agendamentos['Data'] = pd.to_datetime(df_novos_agendamentos['Data'], dayfirst=True, errors='coerce')
     df_novos_agendamentos = df_novos_agendamentos.dropna(subset=['Data'])
 
-    # Identificação da coluna de aniversário
+    # Mapeamento do cabeçalho de aniversários
     coluna_niver = None
     for c in df_novas_clientes.columns:
         if 'anivers' in c.lower() or 'nasc' in c.lower() or 'data' in c.lower():
@@ -196,6 +172,12 @@ if file_clientes and file_agendamentos:
 
     df_novas_clientes[coluna_niver] = df_novas_clientes[coluna_niver].astype(str).str.replace('NaT', '', case=False).str.replace('nan', '', case=False).str.strip()
     
+    # Aplica na tabela os aniversários guardados na memória da sessão atual
+    for nome_cli, niver_val in st.session_state['niveis_adicionados'].items():
+        idx_match = df_novas_clientes[df_novas_clientes['Nome'] == nome_cli].index
+        if not idx_match.empty:
+            df_novas_clientes.loc[idx_match, coluna_niver] = niver_val
+
     # ==========================================
     # GERENCIADOR INTERATIVO DE ANIVERSÁRIOS
     # ==========================================
@@ -212,17 +194,16 @@ if file_clientes and file_agendamentos:
             nova_data = st.sidebar.text_input(f"Data para {cliente_selecionada.split()[0]} (DD/MM):", max_chars=5, placeholder="Ex: 25/10")
             if st.sidebar.button("Gravar Data"):
                 if validar_data_aniversario(nova_data):
-                    idx = df_novas_clientes[df_novas_clientes['Nome'] == cliente_selecionada].index[0]
-                    df_novas_clientes.at[idx, coluna_niver] = nova_data
-                    st.sidebar.success(f"Gravado! Reprocessando...")
-                    df_novas_clientes.to_excel(CAMINHO_HISTORICO_CLIENTES, index=False)
+                    st.session_state['niveis_adicionados'][cliente_selecionada] = nova_data[:5]
+                    st.sidebar.success(f"Gravado! O sistema está processando.")
+                    st.rerun()
                 else:
-                    st.sidebar.error("Formato inválido! Use DD/MM (Ex: 05/12).")
+                    st.sidebar.error("Formato inválido! Use DD/MM.")
     else:
         st.sidebar.success("✨ Banco de aniversários 100% completo!")
 
     # ==========================================
-    # BLINDAGEM CONTRA KEYERROR: EXPANSÃO DE MÚLTIPLOS SERVIÇOS
+    # MOTOR DE DESMEMBRAMENTO DE SERVIÇOS MULTIPLOS
     # ==========================================
     df_novos_agendamentos['Serviço(s)'] = df_novos_agendamentos['Serviço(s)'].astype(str).str.strip()
     linhas_expandidas = []
@@ -232,7 +213,6 @@ if file_clientes and file_agendamentos:
         for s in servicos_separados:
             servico_limpo = s.strip()
             if servico_limpo and servico_limpo != 'nan':
-                # Criamos um dicionário puro para evitar perda de nomes de colunas no Pandas
                 linhas_expandidas.append({
                     'Cliente': linha['Cliente'],
                     'Data': linha['Data'],
@@ -242,40 +222,13 @@ if file_clientes and file_agendamentos:
                     'Serviço(s)': servico_limpo
                 })
                 
-    # Constrói o novo DataFrame garantindo as colunas exatas de destino
-    df_novos_agendamentos_tratado = pd.DataFrame(linhas_expandidas, columns=['Cliente', 'Data', 'Horário', 'Profissional', 'Preço', 'Serviço(s)'])
-    
-    # Força a conversão do tipo datatime na nova tabela controlada
-    df_novos_agendamentos_tratado['Data'] = pd.to_datetime(df_novos_agendamentos_tratado['Data'], errors='coerce')
+    df_agendamentos_processados = pd.DataFrame(linhas_expandidas, columns=['Cliente', 'Data', 'Horário', 'Profissional', 'Preço', 'Serviço(s)'])
+    df_agendamentos_processados['Data'] = pd.to_datetime(df_agendamentos_processados['Data'], errors='coerce')
 
-    # Coleta de serviços únicos diretamente da coluna garantida
-    servicos_na_planilha = df_novos_agendamentos_tratado['Serviço(s)'].unique()
-    for s in servicos_na_planilha:
-        if s not in prazos_servicos:
-            prazos_servicos[s] = 30
-            pd.DataFrame([{'Serviço': k, 'Dias_Retorno': v} for k, v in prazos_servicos.items()]).to_excel(CAMINHO_CONFIG_PRAZOS, index=False)
-
-    # Consolidação das Bases Incrementais
-    if os.path.exists(CAMINHO_HISTORICO_AGENDAMENTOS):
-        df_antigo_agendamentos = pd.read_excel(CAMINHO_HISTORICO_AGENDAMENTOS)
-        df_antigo_agendamentos['Data'] = pd.to_datetime(df_antigo_agendamentos['Data'], dayfirst=True)
-        df_acumulado_agendamentos = pd.concat([df_antigo_agendamentos, df_novos_agendamentos_tratado], ignore_index=True)
-    else:
-        df_acumulado_agendamentos = df_novos_agendamentos_tratado
-        
-    df_acumulado_agendamentos.drop_duplicates(subset=['Data', 'Horário', 'Cliente', 'Serviço(s)'], keep='last', inplace=True)
-    df_acumulado_agendamentos.to_excel(CAMINHO_HISTORICO_AGENDAMENTOS, index=False)
-    
-    if os.path.exists(CAMINHO_HISTORICO_CLIENTES):
-        df_antigo_clientes = pd.read_excel(CAMINHO_HISTORICO_CLIENTES)
-        df_acumulado_clientes = pd.concat([df_antigo_clientes, df_novas_clientes], ignore_index=True)
-    else:
-        df_acumulado_clientes = df_novas_clientes
-    df_acumulado_clientes.drop_duplicates(subset=['Nome'], keep='last', inplace=True)
-    df_acumulado_clientes.to_excel(CAMINHO_HISTORICO_CLIENTES, index=False)
-
-    # Motor Preditivo de Retorno
-    df_ultimos_servicos = df_acumulado_agendamentos.groupby(['Cliente', 'Serviço(s)'], as_index=False)['Data'].max()
+    # ==========================================
+    # CÁLCULO PREDITIVO DIRETAMENTE NA SESSÃO
+    # ==========================================
+    df_ultimos_servicos = df_agendamentos_processados.groupby(['Cliente', 'Serviço(s)'], as_index=False)['Data'].max()
     lista_oportunidades = []
     data_hoje = datetime.now()
 
@@ -284,11 +237,12 @@ if file_clientes and file_agendamentos:
         servico = linha['Serviço(s)']
         data_ultima = linha['Data']
         
-        if servico in prazos_servicos:
-            dias_prazo = prazos_servicos[servico]
+        if servico in PRAZOS_SERVICOS:
+            dias_prazo = PRAZOS_SERVICOS[servico]
             data_ideal_retorno = data_ultima + timedelta(days=dias_prazo)
             
-            if data_ideal_retorno <= data_hoje and (data_hoje - data_ideal_retorno).days <= 15:
+            # Filtro: Clientes cujo tempo ideal já passou (janela ampla de tolerância para testes de 45 dias)
+            if data_ideal_retorno <= data_hoje:
                 dias_atraso = (data_hoje - data_ideal_retorno).days
                 lista_oportunidades.append({
                     'Cliente': cliente, 'Serviço(s)': servico,
@@ -308,7 +262,7 @@ if file_clientes and file_agendamentos:
     data_alvo_niver = data_hoje + timedelta(days=2)
     dia_alvo, mes_alvo = data_alvo_niver.day, data_alvo_niver.month
 
-    for index, linha in df_acumulado_clientes.iterrows():
+    for index, linha in df_novas_clientes.iterrows():
         txt_niver = str(linha[coluna_niver]).strip()
         if txt_niver and '/' in txt_niver:
             try:
@@ -325,29 +279,30 @@ if file_clientes and file_agendamentos:
     df_unificado_gatilhos = pd.concat([df_retornos, df_niver_gatilhos], ignore_index=True)
 
     # ==========================================
-    # DISPLAY PRINCIPAL (MÉTRICAS E DASHBOARD)
+    # DASHBOARD GRÁFICO FINAL (MÉTRICAS)
     # ==========================================
     if not df_unificado_gatilhos.empty:
         df_unificado_gatilhos = df_unificado_gatilhos.sort_values(by='Dias de Atraso', ascending=False)
-        df_final = pd.merge(df_unificado_gatilhos, df_acumulado_clientes, left_on='Cliente', right_on='Nome', how='inner')
+        df_final = pd.merge(df_unificado_gatilhos, df_novas_clientes, left_on='Cliente', right_on='Nome', how='inner')
         
+        # Elimina CPF para a proteção e sigilo da LGPD
         colunas_para_deletar = [c for c in df_final.columns if 'cpf' in c.lower()]
         df_final.drop(columns=colunas_para_deletar, inplace=True, errors='ignore')
         if 'Nome' in df_final.columns: df_final.drop(columns=['Nome'], inplace=True)
         
         df_final.loc[df_final['Tipo de Gatilho'] == 'Aniversário', 'Dias de Atraso'] = 0
 
-        # Cards de BI Estilizados
+        # Cards do Painel principal
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown(f"""<div class="card-historico"><span style="color:#A0A0A0; font-size:11px; font-weight:bold; text-transform:uppercase; letter-spacing:1px;">Base de Dados Acumulada</span><h2 style="margin:5px 0 0 0; color:#FFC0CB; font-size:32px; font-weight:600;">{len(df_acumulado_agendamentos)} <span style="font-size:14px; font-weight:normal; color:#FFFFFF;">registros</span></h2></div>""", unsafe_allow_html=True)
+            st.markdown(f"""<div class="card-historico"><span style="color:#A0A0A0; font-size:11px; font-weight:bold; text-transform:uppercase; letter-spacing:1px;">Planilha Processada com Sucesso</span><h2 style="margin:5px 0 0 0; color:#FFC0CB; font-size:32px; font-weight:600;">{len(df_agendamentos_processados)} <span style="font-size:14px; font-weight:normal; color:#FFFFFF;">atendimentos lidos</span></h2></div>""", unsafe_allow_html=True)
         with col2:
-            st.markdown(f"""<div class="card-gatilhos"><span style="color:#A0A0A0; font-size:11px; font-weight:bold; text-transform:uppercase; letter-spacing:1px;">Fila de Oportunidades Comercial</span><h2 style="margin:5px 0 0 0; color:#F4CE14; font-size:32px; font-weight:600;">{len(df_final)} <span style="font-size:14px; font-weight:normal; color:#FFFFFF;">clientes</span></h2></div>""", unsafe_allow_html=True)
+            st.markdown(f"""<div class="card-gatilhos"><span style="color:#A0A0A0; font-size:11px; font-weight:bold; text-transform:uppercase; letter-spacing:1px;">Fila de Oportunidades Comercial</span><h2 style="margin:5px 0 0 0; color:#F4CE14; font-size:32px; font-weight:600;">{len(df_final)} <span style="font-size:14px; font-weight:normal; color:#FFFFFF;">clientes mapeadas</span></h2></div>""", unsafe_allow_html=True)
             
         st.markdown("<br><h2 style='font-size:22px; color:#FFFFFF;'>📱 Painel de Controle de Abordagens</h2>", unsafe_allow_html=True)
         st.markdown("<p style='font-size:13px; color:#A0A0A0; margin-top:-10px;'>Fila inteligente priorizada por nível de atraso. As ações mais urgentes e aniversariantes estão no topo.</p>", unsafe_allow_html=True)
 
-        # Cabeçalho da Tabela Customizada
+        # Renderização do cabeçalho da tabela customizada
         st.markdown("""
             <div style="background-color: #222222; padding: 10px 15px; border-radius: 6px 6px 0 0; border: 1px solid #333; font-weight: bold; font-size: 13px;">
                 <div style="display: flex; justify-content: space-between; color: #FFC0CB;">
@@ -398,7 +353,7 @@ if file_clientes and file_agendamentos:
             
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # Buffer de exportação estável
+        # Buffer estável de exportação em memória para auditoria
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
             df_final.to_excel(writer, index=False, sheet_name='Auditoria')
@@ -413,7 +368,7 @@ if file_clientes and file_agendamentos:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
-        st.info("ℹ️ Nenhuma cliente pendente de retorno ou aniversariante localizada para a data de hoje.")
+        st.info("ℹ️ Nenhuma cliente pendente de retorno ou aniversariante localizada com os dados desse relatório.")
 else:
     st.markdown("""
         <div style="text-align: center; padding: 60px 20px; background-color: #1A1A1A; border-radius: 12px; border: 1px solid #2D2D2D; margin-top: 40px;">
