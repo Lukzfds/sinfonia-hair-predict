@@ -171,14 +171,21 @@ if file_clientes and file_agendamentos:
     df_novos_agendamentos['Cliente'] = df_novos_agendamentos['Cliente'].astype(str).str.strip()
     df_novas_clientes['Nome'] = df_novas_clientes['Nome'].astype(str).str.strip()
 
-    # Normalização de data
+    # Normalização de data — corrige UserWarning especificando format explícito
+    if 'Data' not in df_novos_agendamentos.columns:
+        st.error("❌ A planilha de agendamentos não possui coluna 'Data'. Verifique o arquivo.")
+        st.stop()
     if df_novos_agendamentos['Data'].dtype == 'object':
         df_novos_agendamentos['Data'] = (
             df_novos_agendamentos['Data'].astype(str).str.extract(r'(\d{2}/\d{2}/\d{4})')[0]
         )
-    df_novos_agendamentos['Data'] = pd.to_datetime(
-        df_novos_agendamentos['Data'], dayfirst=True, errors='coerce'
-    )
+        df_novos_agendamentos['Data'] = pd.to_datetime(
+            df_novos_agendamentos['Data'], format='%d/%m/%Y', errors='coerce'
+        )
+    else:
+        df_novos_agendamentos['Data'] = pd.to_datetime(
+            df_novos_agendamentos['Data'], errors='coerce'
+        )
     df_novos_agendamentos.dropna(subset=['Data'], inplace=True)
 
     # Coluna de aniversário/nascimento
@@ -260,8 +267,11 @@ if file_clientes and file_agendamentos:
     # ==========================================
     df_hist_agend, sha_agend = carregar_do_github("BASE_HISTORICA_AGENDAMENTOS.xlsx")
     if df_hist_agend is not None and not df_hist_agend.empty:
+        # CORREÇÃO: verifica coluna antes de acessar, evita KeyError
         if 'Data' in df_hist_agend.columns:
             df_hist_agend['Data'] = pd.to_datetime(df_hist_agend['Data'], errors='coerce')
+        else:
+            df_hist_agend['Data'] = pd.NaT
         df_acumulado_agendamentos = pd.concat(
             [df_hist_agend, df_novos_tratados], ignore_index=True
         )
