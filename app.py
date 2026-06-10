@@ -2,7 +2,9 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import urllib.parse
-import os
+import json
+import base64
+import requests
 import re
 import io
 
@@ -24,7 +26,7 @@ st.markdown("""
         font-family: 'Segoe UI', system-ui, sans-serif;
     }
     
-    /* CORREÇÃO DO MENU: Seta de recolher sempre visível */
+    /* Seta de recolher sempre visível */
     [data-testid="stSidebarCollapseButton"] button {
         background-color: #FFC0CB !important;
         color: #121212 !important;
@@ -33,75 +35,64 @@ st.markdown("""
         width: 40px !important;
         height: 40px !important;
     }
-    [data-testid="stSidebarCollapseButton"] svg {
-        fill: #121212 !important;
-        stroke: #121212 !important;
-    }
-
-    /* Estilização Completa da Barra Lateral */
-    [data-testid="stSidebar"] {
-        background-color: #1A1A1A !important;
-        border-right: 1px solid #2D2D2D;
-    }
+    [data-testid="stSidebarCollapseButton"] svg { fill: #121212 !important; stroke: #121212 !important; }
+    [data-testid="stSidebar"] { background-color: #1A1A1A !important; border-right: 1px solid #2D2D2D; }
     [data-testid="stSidebar"] * { color: #FFFFFF !important; }
     
-    div[data-baseweb="select"] > div {
-        background-color: #2D2D2D !important;
-        color: #FFFFFF !important;
-        border: 1px solid #444444 !important;
-    }
-    div[data-baseweb="input"] input {
-        background-color: #2D2D2D !important;
-        color: #FFFFFF !important;
-        border: 1px solid #444444 !important;
-    }
-    ul[role="listbox"] li {
-        background-color: #2D2D2D !important;
-        color: #FFFFFF !important;
-    }
-    ul[role="listbox"] li:hover {
-        background-color: #FFC0CB !important;
-        color: #121212 !important;
-    }
-    [data-testid="stSidebar"] button {
-        background-color: #FFC0CB !important;
-        color: #121212 !important;
-        font-weight: bold !important;
-        border: none !important;
-        width: 100% !important;
-    }
-
-    /* Cards de BI */
-    .card-historico {
-        background-color: #1A1A1A;
-        padding: 22px;
-        border-radius: 12px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        border: 1px solid #2D2D2D;
-        border-top: 4px solid #FFC0CB;
-        text-align: center;
-    }
-    .card-gatilhos {
-        background-color: #1A1A1A;
-        padding: 22px;
-        border-radius: 12px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        border: 1px solid #2D2D2D;
-        border-top: 4px solid #F4CE14;
-        text-align: center;
-    }
+    div[data-baseweb="select"] > div { background-color: #2D2D2D !important; color: #FFFFFF !important; border: 1px solid #444444 !important; }
+    div[data-baseweb="input"] input { background-color: #2D2D2D !important; color: #FFFFFF !important; border: 1px solid #444444 !important; }
+    ul[role="listbox"] li { background-color: #2D2D2D !important; color: #FFFFFF !important; }
+    ul[role="listbox"] li:hover { background-color: #FFC0CB !important; color: #121212 !important; }
+    [data-testid="stSidebar"] button { background-color: #FFC0CB !important; color: #121212 !important; font-weight: bold !important; border: none !important; width: 100% !important; }
+    .card-historico { background-color: #1A1A1A; padding: 22px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); border: 1px solid #2D2D2D; border-top: 4px solid #FFC0CB; text-align: center; }
+    .card-gatilhos { background-color: #1A1A1A; padding: 22px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); border: 1px solid #2D2D2D; border-top: 4px solid #F4CE14; text-align: center; }
     </style>
 """, unsafe_allow_html=True)
 
-# Banner Principal Institucional
 st.markdown("""
     <div style="text-align:center; background: linear-gradient(135deg, #141414 0%, #222222 100%); padding: 35px; border-radius: 14px; margin-bottom: 25px; border: 1px solid #2D2D2D;">
-        <h1 style="color: #FFC0CB; margin:0; font-size: 36px; font-weight: 700; letter-spacing: 2px; font-family: 'Playfair Display', 'Segoe UI', serif;">SINFONIA HAIR</h1>
-        <p style="color: #FFFFFF; margin: 8px 0 0 0; font-size: 12px; letter-spacing: 5px; font-weight: 400; text-transform: uppercase; opacity: 0.8;">Estúdio de Beleza • Predict System</p>
+        <h1 style="color: #FFC0CB; margin:0; font-size: 36px; font-weight: 700; letter-spacing: 2px;">SINFONIA HAIR</h1>
+        <p style="color: #FFFFFF; margin: 8px 0 0 0; font-size: 12px; letter-spacing: 5px; font-weight: 400; text-transform: uppercase; opacity: 0.8;">Estúdio de Beleza • Serverless Predict System</p>
     </div>
 """, unsafe_allow_html=True)
 
-# Prazos padrão de retorno do estabelecimento (regras setadas no início)
+# ==========================================
+# FUNÇÕES DE PERSISTÊNCIA VIA GITHUB API (100% GRATUITO)
+# ==========================================
+TOKEN = st.secrets.get("GITHUB_TOKEN", "")
+REPO = st.secrets.get("GITHUB_REPO", "")
+
+def carregar_do_github(nome_arquivo):
+    if not TOKEN or not REPO: return None
+    url = f"https://api.github.com/repos/{REPO}/contents/{nome_arquivo}"
+    headers = {"Authorization": f"token {TOKEN}"}
+    resposta = requests.get(url, headers=headers)
+    if resposta.status_code == 200:
+        dados = resposta.json()
+        conteudo_bic = base64.b64decode(dados["content"])
+        return pd.read_excel(io.BytesIO(conteudo_bic)), dados["sha"]
+    return None, None
+
+def salvar_no_github(df, nome_arquivo, sha=None):
+    if not TOKEN or not REPO: return
+    url = f"https://api.github.com/repos/{REPO}/contents/{nome_arquivo}"
+    headers = {"Authorization": f"token {TOKEN}"}
+    
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False)
+    conteudo_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    
+    payload = {
+        "message": f"Atualizando banco de dados: {nome_arquivo}",
+        "content": conteudo_b64
+    }
+    if sha:
+        payload["sha"] = sha
+        
+    requests.put(url, headers=headers, json=payload)
+
+# Regras estáticas de prazos
 PRAZOS_SERVICOS = {
     "Aplicação de alongamento em gel": 30, "Aplicação de coloração": 40, 
     "Cauterização/queratinização capilar": 30, "Coloração 1/2": 45, "Coloração capilar": 40, 
@@ -113,23 +104,10 @@ PRAZOS_SERVICOS = {
     "Pedicure": 15, "Realinhamento térmico": 90, "Spa nos pés": 30
 }
 
-def validar_data_aniversario(texto_data):
-    texto_data = str(texto_data).strip()
-    match = re.match(r'^(\d{2})/(\d{2})', texto_data)
-    if not match: return False
-    dia, mes = int(match.group(1)), int(match.group(2))
-    if mes < 1 or mes > 12: return False
-    dias_por_mes = [0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    if dia < 1 or dia > dias_por_mes[mes]: return False
-    return True
+if 'niveis_web' not in st.session_state:
+    st.session_state['niveis_web'] = {}
 
-# Inicializa estados de memória do site para os aniversários digitados em tela
-if 'niveis_adicionados' not in st.session_state:
-    st.session_state['niveis_adicionados'] = {}
-
-# ==========================================
-# PAINEL LATERAL DE CARGA (INPUTS)
-# ==========================================
+# Inputs da barra lateral
 st.sidebar.markdown("### 📥 1. CARGA DE PLANILHAS")
 file_clientes = st.sidebar.file_uploader("Suba a planilha 'BaseDeClientes'", type=["xlsx"])
 file_agendamentos = st.sidebar.file_uploader("Suba o 'RelatorioAgendamento'", type=["xlsx"])
@@ -138,242 +116,188 @@ if file_clientes and file_agendamentos:
     df_novos_agendamentos = pd.read_excel(file_agendamentos)
     df_novas_clientes = pd.read_excel(file_clientes)
     
-    # Padronização e higienização inteligente das colunas
-    col_servico_alvo = None
-    for c in df_novos_agendamentos.columns:
-        if 'servi' in c.lower() or 'proced' in c.lower():
-            col_servico_alvo = c
-            break
+    # Padronização inteligente de colunas
+    col_servico = next((c for c in df_novos_agendamentos.columns if 'servi' in c.lower() or 'proced' in c.lower()), None)
+    if col_servico: df_novos_agendamentos.rename(columns={col_servico: 'Serviço(s)'}, inplace=True)
     
-    if col_servico_alvo:
-        df_novos_agendamentos = df_novos_agendamentos.rename(columns={col_servico_alvo: 'Serviço(s)'})
-    else:
-        st.error("❌ Não encontramos nenhuma coluna de 'Serviço' no seu arquivo de Agendamentos.")
-        st.stop()
-
     df_novos_agendamentos['Cliente'] = df_novos_agendamentos['Cliente'].astype(str).str.strip()
     df_novas_clientes['Nome'] = df_novas_clientes['Nome'].astype(str).str.strip()
     
-    # Tratamento de datas brasileiras mistas
     if df_novos_agendamentos['Data'].dtype == 'object':
         df_novos_agendamentos['Data'] = df_novos_agendamentos['Data'].astype(str).str.extract(r'(\d{2}/\d{2}/\d{4})')[0]
     df_novos_agendamentos['Data'] = pd.to_datetime(df_novos_agendamentos['Data'], dayfirst=True, errors='coerce')
-    df_novos_agendamentos = df_novos_agendamentos.dropna(subset=['Data'])
+    df_novos_agendamentos.dropna(subset=['Data'], inplace=True)
 
-    # Mapeamento do cabeçalho de aniversários
-    coluna_niver = None
-    for c in df_novas_clientes.columns:
-        if 'anivers' in c.lower() or 'nasc' in c.lower() or 'data' in c.lower():
-            coluna_niver = c
-            break
-    if not coluna_niver:
-        df_novas_clientes['Aniversário'] = ""
-        coluna_niver = 'Aniversário'
-
+    coluna_niver = next((c for c in df_novas_clientes.columns if 'anivers' in c.lower() or 'nasc' in c.lower() or 'data' in c.lower()), 'Aniversário')
+    if coluna_niver not in df_novas_clientes.columns: df_novas_clientes[coluna_niver] = ""
     df_novas_clientes[coluna_niver] = df_novas_clientes[coluna_niver].astype(str).str.replace('NaT', '', case=False).str.replace('nan', '', case=False).str.strip()
-    
-    # Aplica na tabela os aniversários guardados na memória da sessão atual
-    for nome_cli, niver_val in st.session_state['niveis_adicionados'].items():
-        idx_match = df_novas_clientes[df_novas_clientes['Nome'] == nome_cli].index
-        if not idx_match.empty:
-            df_novas_clientes.loc[idx_match, coluna_niver] = niver_val
 
-    # ==========================================
-    # GERENCIADOR INTERATIVO DE ANIVERSÁRIOS
-    # ==========================================
+    # Aplica aniversários salvos na sessão
+    for n_c, n_v in st.session_state['niveis_web'].items():
+        idx = df_novas_clientes[df_novas_clientes['Nome'] == n_c].index
+        if not idx.empty: df_novas_clientes.loc[idx, coluna_niver] = n_v
+
+    # Sidebar Interativa de Aniversários
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎂 2. COMPLEMENTO DE CADASTROS")
-    
     clientes_sem_niver = df_novas_clientes[df_novas_clientes[coluna_niver].apply(lambda x: len(str(x).strip()) < 5)]
     
     if not clientes_sem_niver.empty:
         st.sidebar.warning(f"Existem {len(clientes_sem_niver)} fichas sem aniversário.")
-        cliente_selecionada = st.sidebar.selectbox("Escolha uma cliente para atualizar:", ["Pular / Continuar..."] + clientes_sem_niver['Nome'].tolist())
-        
-        if cliente_selecionada != "Pular / Continuar...":
-            nova_data = st.sidebar.text_input(f"Data para {cliente_selecionada.split()[0]} (DD/MM):", max_chars=5, placeholder="Ex: 25/10")
+        sel_cli = st.sidebar.selectbox("Escolha uma cliente para atualizar:", ["Pular..."] + clientes_sem_niver['Nome'].tolist())
+        if sel_cli != "Pular...":
+            dat_in = st.sidebar.text_input(f"Data para {sel_cli.split()[0]} (DD/MM):", max_chars=5)
             if st.sidebar.button("Gravar Data"):
-                if validar_data_aniversario(nova_data):
-                    st.session_state['niveis_adicionados'][cliente_selecionada] = nova_data[:5]
-                    st.sidebar.success(f"Gravado! O sistema está processando.")
+                match_dt = re.match(r'^(\d{2})/(\d{2})', dat_in.strip())
+                if match_dt and int(match_dt.group(2)) <= 12:
+                    st.session_state['niveis_web'][sel_cli] = dat_in.strip()
+                    st.sidebar.success("Gravado na sessão!")
                     st.rerun()
-                else:
-                    st.sidebar.error("Formato inválido! Use DD/MM.")
-    else:
-        st.sidebar.success("✨ Banco de aniversários 100% completo!")
+                else: st.sidebar.error("Data Inválida.")
+    else: st.sidebar.success("Fichas completas!")
 
-    # ==========================================
-    # MOTOR DE DESMEMBRAMENTO DE SERVIÇOS MULTIPLOS
-    # ==========================================
-    df_novos_agendamentos['Serviço(s)'] = df_novos_agendamentos['Serviço(s)'].astype(str).str.strip()
-    linhas_expandidas = []
-    
-    for _, linha in df_novos_agendamentos.iterrows():
-        servicos_separados = re.split(r'[,/+\\]', linha['Serviço(s)'])
-        for s in servicos_separados:
-            servico_limpo = s.strip()
-            if servico_limpo and servico_limpo != 'nan':
-                linhas_expandidas.append({
-                    'Cliente': linha['Cliente'],
-                    'Data': linha['Data'],
-                    'Horário': linha.get('Horário', ''),
-                    'Profissional': linha.get('Profissional', ''),
-                    'Preço': linha.get('Preço', 0),
-                    'Serviço(s)': servico_limpo
+    # Desmembramento de Múltiplos Serviços
+    linhas_exp = []
+    for _, lin in df_novos_agendamentos.iterrows():
+        for s in re.split(r'[,/+\\]', str(lin['Serviço(s)'])):
+            if s.strip() and s.strip() != 'nan':
+                linhas_exp.append({
+                    'Cliente': lin['Cliente'], 'Data': lin['Data'],
+                    'Horário': lin.get('Horário', ''), 'Profissional': lin.get('Profissional', ''),
+                    'Preço': lin.get('Preço', 0), 'Serviço(s)': s.strip()
                 })
-                
-    df_agendamentos_processados = pd.DataFrame(linhas_expandidas, columns=['Cliente', 'Data', 'Horário', 'Profissional', 'Preço', 'Serviço(s)'])
-    df_agendamentos_processados['Data'] = pd.to_datetime(df_agendamentos_processados['Data'], errors='coerce')
+    df_novos_tratados = pd.DataFrame(linhas_exp)
 
-    # ==========================================
-    # CÁLCULO PREDITIVO DIRETAMENTE NA SESSÃO
-    # ==========================================
-    df_ultimos_servicos = df_agendamentos_processados.groupby(['Cliente', 'Serviço(s)'], as_index=False)['Data'].max()
-    lista_oportunidades = []
+    # 🛰️ INTEGRAÇÃO E SINCRONIZAÇÃO EM NUVEM VIA GITHUB
+    df_hist_agend, sha_agend = carregar_do_github("BASE_HISTORICA_AGENDAMENTOS.xlsx")
+    if df_hist_agend is not None:
+        df_hist_agend['Data'] = pd.to_datetime(df_hist_agend['Data'], errors='coerce')
+        df_acumulado_agendamentos = pd.concat([df_hist_agend, df_novos_tratados], ignore_index=True)
+    else:
+        df_acumulado_agendamentos = df_novos_tratados
+        
+    df_acumulado_agendamentos.drop_duplicates(subset=['Data', 'Horário', 'Cliente', 'Serviço(s)'], keep='last', inplace=True)
+    salvar_no_github(df_acumulado_agendamentos, "BASE_HISTORICA_AGENDAMENTOS.xlsx", sha_agend)
+
+    df_hist_cli, sha_cli = carregar_do_github("BASE_HISTORICA_CLIENTES.xlsx")
+    if df_hist_cli is not None:
+        df_acumulado_clientes = pd.concat([df_hist_cli, df_novas_clientes], ignore_index=True)
+    else:
+        df_acumulado_clientes = df_novas_clientes
+        
+    df_acumulado_clientes.drop_duplicates(subset=['Nome'], keep='last', inplace=True)
+    salvar_no_github(df_acumulado_clientes, "BASE_HISTORICA_CLIENTES.xlsx", sha_cli)
+
+    # Motor Analítico de Retorno (Janela de 365 dias para capturar os testes)
+    df_ultimos = df_acumulado_agendamentos.groupby(['Cliente', 'Serviço(s)'], as_index=False)['Data'].max()
+    lista_op = []
     data_hoje = datetime.now()
 
-    for index, linha in df_ultimos_servicos.iterrows():
-        cliente = linha['Cliente']
-        servico = linha['Serviço(s)']
-        data_ultima = linha['Data']
-        
-        if servico in PRAZOS_SERVICOS:
-            dias_prazo = PRAZOS_SERVICOS[servico]
-            data_ideal_retorno = data_ultima + timedelta(days=dias_prazo)
-            
-            # Filtro: Clientes cujo tempo ideal já passou (janela ampla de tolerância para testes de 45 dias)
-            if data_ideal_retorno <= data_hoje:
-                dias_atraso = (data_hoje - data_ideal_retorno).days
-                lista_oportunidades.append({
-                    'Cliente': cliente, 'Serviço(s)': servico,
-                    'Última Visita': data_ultima.strftime('%d/%m/%Y'),
-                    'Data Ideal Retorno': data_ideal_retorno.strftime('%d/%m/%Y'),
-                    'Dias de Atraso': dias_atraso,
-                    'Tipo de Gatilho': 'Retorno'
+    for _, lin in df_ultimos.iterrows():
+        srv = lin['Serviço(s)']
+        if srv in PRAZOS_SERVICOS:
+            dt_id = pd.to_datetime(lin['Data']) + timedelta(days=PRAZOS_SERVICOS[srv])
+            if dt_id <= data_hoje and (data_hoje - dt_id).days <= 365:
+                lista_op.append({
+                    'Cliente': lin['Cliente'], 'Serviço(s)': srv,
+                    'Última Visita': pd.to_datetime(lin['Data']).strftime('%d/%m/%Y'),
+                    'Data Ideal Retorno': dt_id.strftime('%d/%m/%Y'),
+                    'Dias de Atraso': (data_hoje - dt_id).days, 'Tipo de Gatilho': 'Retorno'
                 })
 
-    df_retornos = pd.DataFrame(lista_oportunidades)
-    if not df_retornos.empty:
-        df_retornos = df_retornos.sort_values(by='Dias de Atraso', ascending=False)
-        df_retornos.drop_duplicates(subset=['Cliente'], keep='first', inplace=True)
+    df_ret = pd.DataFrame(lista_op)
+    if not df_ret.empty:
+        df_ret = df_ret.sort_values(by='Dias de Atraso', ascending=False).drop_duplicates(subset=['Cliente'], keep='first')
 
-    # Motor de Aniversariantes (Janela de 2 dias de antecedência)
-    lista_aniversariantes = []
-    data_alvo_niver = data_hoje + timedelta(days=2)
-    dia_alvo, mes_alvo = data_alvo_niver.day, data_alvo_niver.month
-
-    for index, linha in df_novas_clientes.iterrows():
-        txt_niver = str(linha[coluna_niver]).strip()
-        if txt_niver and '/' in txt_niver:
+    # Motor de Aniversários
+    lista_aniv = []
+    dt_alvo = data_hoje + timedelta(days=2)
+    for _, lin in df_acumulado_clientes.iterrows():
+        token_nv = str(lin[coluna_niver]).split('/')
+        if len(token_nv) == 2:
             try:
-                partes = txt_niver.split('/')
-                if int(partes[0]) == dia_alvo and int(partes[1]) == mes_alvo:
-                    lista_aniversariantes.append({
-                        'Cliente': linha['Nome'], 'Serviço(s)': 'Aniversário Especial',
-                        'Última Visita': '-', 'Data Ideal Retorno': data_alvo_niver.strftime('%d/%m/%Y'),
+                if int(token_nv[0]) == dt_alvo.day and int(token_nv[1]) == dt_alvo.month:
+                    lista_aniv.append({
+                        'Cliente': lin['Nome'], 'Serviço(s)': 'Aniversário Especial',
+                        'Última Visita': '-', 'Data Ideal Retorno': dt_alvo.strftime('%d/%m/%Y'),
                         'Dias de Atraso': 999, 'Tipo de Gatilho': 'Aniversário'
                     })
             except: continue
-                
-    df_niver_gatilhos = pd.DataFrame(lista_aniversariantes)
-    df_unificado_gatilhos = pd.concat([df_retornos, df_niver_gatilhos], ignore_index=True)
+            
+    df_unificado = pd.concat([df_ret, pd.DataFrame(lista_aniv)], ignore_index=True)
 
-    # ==========================================
-    # DASHBOARD GRÁFICO FINAL (MÉTRICAS)
-    # ==========================================
-    if not df_unificado_gatilhos.empty:
-        df_unificado_gatilhos = df_unificado_gatilhos.sort_values(by='Dias de Atraso', ascending=False)
-        df_final = pd.merge(df_unificado_gatilhos, df_novas_clientes, left_on='Cliente', right_on='Nome', how='inner')
+    # Renderização da UI Gráfica Premium
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f"""<div class="card-historico"><span style="color:#A0A0A0; font-size:11px; font-weight:bold; text-transform:uppercase;">Banco de Dados Acumulado</span><h2 style="margin:5px 0 0 0; color:#FFC0CB; font-size:32px;">{len(df_acumulado_agendamentos)} <span style="font-size:14px; font-weight:normal; color:#FFFFFF;">linhas</span></h2></div>""", unsafe_allow_html=True)
+    with col2:
+        tot_g = len(df_unificado) if not df_unificado.empty else 0
+        st.markdown(f"""<div class="card-gatilhos"><span style="color:#A0A0A0; font-size:11px; font-weight:bold; text-transform:uppercase;">Fila de Oportunidades</span><h2 style="margin:5px 0 0 0; color:#F4CE14; font-size:32px;">{tot_g} <span style="font-size:14px; font-weight:normal; color:#FFFFFF;">clientes hoje</span></h2></div>""", unsafe_allow_html=True)
+
+    if not df_unificado.empty:
+        df_unificado.sort_values(by='Dias de Atraso', ascending=False, inplace=True)
+        df_final = pd.merge(df_unificado, df_acumulado_clientes, left_on='Cliente', right_on='Nome', how='inner')
         
-        # Elimina CPF para a proteção e sigilo da LGPD
-        colunas_para_deletar = [c for c in df_final.columns if 'cpf' in c.lower()]
-        df_final.drop(columns=colunas_para_deletar, inplace=True, errors='ignore')
+        colunas_del = [c for c in df_final.columns if 'cpf' in c.lower()]
+        df_final.drop(columns=colunas_del, inplace=True, errors='ignore')
         if 'Nome' in df_final.columns: df_final.drop(columns=['Nome'], inplace=True)
-        
         df_final.loc[df_final['Tipo de Gatilho'] == 'Aniversário', 'Dias de Atraso'] = 0
 
-        # Cards do Painel principal
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown(f"""<div class="card-historico"><span style="color:#A0A0A0; font-size:11px; font-weight:bold; text-transform:uppercase; letter-spacing:1px;">Planilha Processada com Sucesso</span><h2 style="margin:5px 0 0 0; color:#FFC0CB; font-size:32px; font-weight:600;">{len(df_agendamentos_processados)} <span style="font-size:14px; font-weight:normal; color:#FFFFFF;">atendimentos lidos</span></h2></div>""", unsafe_allow_html=True)
-        with col2:
-            st.markdown(f"""<div class="card-gatilhos"><span style="color:#A0A0A0; font-size:11px; font-weight:bold; text-transform:uppercase; letter-spacing:1px;">Fila de Oportunidades Comercial</span><h2 style="margin:5px 0 0 0; color:#F4CE14; font-size:32px; font-weight:600;">{len(df_final)} <span style="font-size:14px; font-weight:normal; color:#FFFFFF;">clientes mapeadas</span></h2></div>""", unsafe_allow_html=True)
-            
-        st.markdown("<br><h2 style='font-size:22px; color:#FFFFFF;'>📱 Painel de Controle de Abordagens</h2>", unsafe_allow_html=True)
-        st.markdown("<p style='font-size:13px; color:#A0A0A0; margin-top:-10px;'>Fila inteligente priorizada por nível de atraso. As ações mais urgentes e aniversariantes estão no topo.</p>", unsafe_allow_html=True)
-
-        # Renderização do cabeçalho da tabela customizada
+        st.markdown("<br><h3 style='color: #FFC0CB;'>📱 Painel de Controle de Abordagens</h3>", unsafe_allow_html=True)
+        
+        # Cabeçalho da Tabela
         st.markdown("""
-            <div style="background-color: #222222; padding: 10px 15px; border-radius: 6px 6px 0 0; border: 1px solid #333; font-weight: bold; font-size: 13px;">
+            <div style="background-color: #222222; padding: 10px 15px; border-radius: 6px 6px 0 0; border: 1px solid #333; font-weight: bold; font-size: 13px; margin-bottom: 2px;">
                 <div style="display: flex; justify-content: space-between; color: #FFC0CB;">
                     <div style="width: 15%;">CLIENTE</div>
-                    <div style="width: 15%;">ALERTA / GATILHO</div>
+                    <div style="width: 15%;">ALERTA</div>
                     <div style="width: 10%;">ÚLT. VISITA</div>
                     <div style="width: 10%;">RETORNO IDEAL</div>
-                    <div style="width: 10%;">STATUS ATRASO</div>
+                    <div style="width: 10%;">ATRASO</div>
                     <div style="width: 30%;">MENSAGEM SUGERIDA</div>
                     <div style="width: 10%; text-align: center;">AÇÃO</div>
                 </div>
             </div>
         """, unsafe_allow_html=True)
 
-        for idx, linha in df_final.iterrows():
-            primeiro_nome = linha['Cliente'].split()[0]
-            telefone = str(linha['Telefone']).replace(".0", "").replace(" ", "").strip()
-            if not telefone.startswith('55') and len(telefone) >= 10: telefone = '55' + telefone
+        for _, linha in df_final.iterrows():
+            p_nome = linha['Cliente'].split()[0]
+            tel = str(linha['Telefone']).replace(".0", "").replace(" ", "").strip()
+            if not tel.startswith('55') and len(tel) >= 10: tel = '55' + tel
             
             if linha['Tipo de Gatilho'] == 'Aniversário':
-                badge_style = "background-color: #3a2d15; color: #F4CE14; border: 1px solid #F4CE14; padding: 3px 8px; border-radius: 20px; font-size: 11px; font-weight: bold;"
-                badge_lbl = "🎁 Aniversário"
-                atraso_txt = "<span style='color: #F4CE14; font-weight:bold;'>Faltam 2 dias</span>"
-                mensagem = f"Olá, {primeiro_nome}! 🥳✨ Nós do Sinfonia Hair sabemos que seu aniversário está chegando! E para comemorar essa data tão especial, preparamos um presente surpresa exclusivo para você. Venha nos visitar nesta semana para fazer qualquer serviço e retirar seu presente! Agende seu horário conosco! 🥰"
+                b_style = "background-color: #3a2d15; color: #F4CE14; border: 1px solid #F4CE14; padding: 3px 8px; border-radius: 20px;"
+                b_lbl, atr_t = "🎁 Aniversário", "<span style='color: #F4CE14; font-weight:bold;'>Faltam 2 dias</span>"
+                msg = f"Olá, {p_nome}! 🥳✨ Nós do Sinfonia Hair sabemos que seu aniversário está chegando! Preparamos um presente surpresa exclusivo para você. Venha nos visitar nesta semana e retire seu presente! 🥰"
             else:
-                badge_style = "background-color: #1d2d3a; color: #8ecae6; padding: 3px 8px; border-radius: 20px; font-size: 11px;"
-                badge_lbl = f"⏳ {linha['Serviço(s)']}"
-                atraso_txt = f"<span style='color: #ff4d4d; font-weight:bold;'>{linha['Dias de Atraso']} dias</span>"
-                mensagem = f"Olá, {primeiro_nome}! ✨ Notamos aqui no Sinfonia Hair que sua última {linha['Serviço(s)'].lower()} já está no tempo ideal de retoque. Que tal aproveitar para agendar um horário conosco nesta semana e manter seus cuidados em dia? 🥰"
+                b_style = "background-color: #1d2d3a; color: #8ecae6; padding: 3px 8px; border-radius: 20px;"
+                b_lbl, atr_t = f"⏳ {linha['Serviço(s)']}", f"<span style='color: #ff4d4d; font-weight:bold;'>{linha['Dias de Atraso']} dias</span>"
+                msg = f"Olá, {p_nome}! ✨ Notamos aqui no Sinfonia Hair que sua última {linha['Serviço(s)'].lower()} já está no tempo ideal de retoque. Que tal aproveitar para agendar um horário conosco e manter seus cuidados em dia? 🥰"
             
-            link_wa = f"https://wa.me/{telefone}?text={urllib.parse.quote(mensagem)}"
+            l_wa = f"https://wa.me/{tel}?text={urllib.parse.quote(msg)}"
             
             st.markdown(f"""
-                <div style="background-color: #1A1A1A; padding: 15px; border-left: 4px solid #FFC0CB; border-right: 1px solid #2D2D2D; border-top: 1px solid #2D2D2D; border-bottom: 1px solid #2D2D2D; font-size: 13px; margin-bottom: 1px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
-                        <div style="width: 15%; font-weight: bold; color: #FFFFFF;">{linha['Cliente']}</div>
-                        <div style="width: 15%;"><span style="{badge_style}">{badge_lbl}</span></div>
-                        <div style="width: 10%; color: #CCCCCC;">{linha['Última Visita']}</div>
-                        <div style="width: 10%; color: #CCCCCC;">{linha['Data Ideal Retorno']}</div>
-                        <div style="width: 10%;">{atraso_txt}</div>
-                        <div style="width: 30%; color: #B3B3B3; font-style: italic; font-size: 12px; padding-right: 10px; line-height: 1.4;">"{mensagem}"</div>
+                <div style="background-color: #1A1A1A; padding: 15px; border-left: 4px solid #FFC0CB; border-right: 1px solid #2D2D2D; border-top: 1px solid #2D2D2D; border-bottom: 1px solid #2D2D2D; font-size: 13px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="width: 15%; font-weight: bold;">{linha['Cliente']}</div>
+                        <div style="width: 15%;"><span style="{b_style}">{b_lbl}</span></div>
+                        <div style="width: 10%; color:#CCC;">{linha['Última Visita']}</div>
+                        <div style="width: 10%; color:#CCC;">{linha['Data Ideal Retorno']}</div>
+                        <div style="width: 10%;">{atr_t}</div>
+                        <div style="width: 30%; color:#B3B3B3; font-style:italic;">"{msg}"</div>
                         <div style="width: 10%; text-align: center;">
-                            <a href="{link_wa}" target="_blank" style="display: inline-block; background-color: #FFC0CB; color: #121212; text-decoration: none; padding: 8px 16px; font-weight: bold; border-radius: 6px; font-size: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">Disparar</a>
+                            <a href="{l_wa}" target="_blank" style="display: inline-block; background-color: #FFC0CB; color: #121212; text-decoration: none; padding: 6px 12px; font-weight: bold; border-radius: 6px;">Disparar</a>
                         </div>
                     </div>
                 </div>
             """, unsafe_allow_html=True)
-            
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # Buffer estável de exportação em memória para auditoria
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            df_final.to_excel(writer, index=False, sheet_name='Auditoria')
-        buffer.seek(0)
-
-        st.sidebar.markdown("---")
-        st.sidebar.markdown("### 📥 3. EXPORTAR DATA")
-        st.sidebar.download_button(
-            label="Baixar Planilha de Segurança", 
-            data=buffer, 
-            file_name="auditoria_sinfonia.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
     else:
-        st.info("ℹ️ Nenhuma cliente pendente de retorno ou aniversariante localizada com os dados desse relatório.")
+        st.info("ℹ️ Nenhuma cliente elegível para retorno localizada com os filtros de hoje.")
 else:
     st.markdown("""
         <div style="text-align: center; padding: 60px 20px; background-color: #1A1A1A; border-radius: 12px; border: 1px solid #2D2D2D; margin-top: 40px;">
             <span style="font-size: 40px;">✨</span>
             <h3 style="color: #FFC0CB; margin-top: 15px; font-size: 20px;">Aguardando Arquivos do Dia</h3>
-            <p style="color: #A0A0A0; font-size: 14px; max-width: 500px; margin: 10px auto;">Por favor, vá até o menu lateral à esquerda e selecione as planilhas do salão para carregar o Dashboard de Inteligência Comercial.</p>
+            <p style="color: #A0A0A0; font-size: 14px; max-width: 500px; margin: 10px auto;">Faça o upload das planilhas para carregar o Dashboard de Inteligência Comercial.</p>
         </div>
     """, unsafe_allow_html=True)
