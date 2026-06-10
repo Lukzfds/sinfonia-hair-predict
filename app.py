@@ -259,7 +259,7 @@ if file_clientes and file_agendamentos:
         # Ajusta exibição do atraso de aniversário na tabela
         df_final.loc[df_final['Tipo de Gatilho'] == 'Aniversário', 'Dias de Atraso'] = 0
 
-        # Mapeamento de Cards Superiores
+        # Card de Indicadores do Dashboard
         col1, col2 = st.columns(2)
         with col1:
             st.markdown(f"""<div class="card-historico"><span style="color:#7f8c8d; font-size:12px; font-weight:bold; text-transform:uppercase;">Histórico de Atendimentos</span><h2 style="margin:5px 0 0 0; color:#0B192C;">{len(df_acumulado_agendamentos)}</h2></div>""", unsafe_allow_html=True)
