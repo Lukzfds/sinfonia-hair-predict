@@ -267,20 +267,47 @@ if file_clientes and file_agendamentos:
     # ==========================================
     df_hist_agend, sha_agend = carregar_do_github("BASE_HISTORICA_AGENDAMENTOS.xlsx")
     if df_hist_agend is not None and not df_hist_agend.empty:
-        # CORREÇÃO: verifica coluna antes de acessar, evita KeyError
-        if 'Data' in df_hist_agend.columns:
-            df_hist_agend['Data'] = pd.to_datetime(df_hist_agend['Data'], errors='coerce')
-        else:
-            df_hist_agend['Data'] = pd.NaT
+        # Normaliza colunas — acentos/especiais podem se perder ao salvar/ler Excel
+        mapa_col = {}
+        for c in df_hist_agend.columns:
+            cn = c.strip().lower()
+            if 'servi' in cn or 'proced' in cn:
+                mapa_col[c] = 'Servico_s'
+            elif cn == 'data':
+                mapa_col[c] = 'Data'
+            elif cn == 'cliente':
+                mapa_col[c] = 'Cliente'
+            elif 'hor' in cn:
+                mapa_col[c] = 'Horario'
+        df_hist_agend.rename(columns=mapa_col, inplace=True)
+
+        # Garante colunas obrigatórias
+        for col_obrig, default in [('Data', pd.NaT), ('Servico_s', ''), ('Cliente', ''), ('Horario', '')]:
+            if col_obrig not in df_hist_agend.columns:
+                df_hist_agend[col_obrig] = default
+
+        df_hist_agend['Data'] = pd.to_datetime(df_hist_agend['Data'], errors='coerce')
         df_acumulado_agendamentos = pd.concat(
             [df_hist_agend, df_novos_tratados], ignore_index=True
         )
     else:
         df_acumulado_agendamentos = df_novos_tratados.copy()
 
+    # Unifica nomes de coluna após concat (novo df usa 'Servico_s', histórico pode ter outro nome)
+    for c in df_acumulado_agendamentos.columns:
+        cn = c.strip().lower()
+        if ('servi' in cn or 'proced' in cn) and c != 'Servico_s':
+            df_acumulado_agendamentos.rename(columns={c: 'Servico_s'}, inplace=True)
+            break
+    if 'Servico_s' not in df_acumulado_agendamentos.columns:
+        df_acumulado_agendamentos['Servico_s'] = ''
+
     df_acumulado_agendamentos.drop_duplicates(
-        subset=['Data', 'Horário', 'Cliente', 'Serviço(s)'], keep='last', inplace=True
+        subset=['Data', 'Horario', 'Cliente', 'Servico_s'], keep='last', inplace=True
     )
+
+    # Renomeia de volta para exibição — apenas na hora de salvar/exibir
+    df_acumulado_agendamentos.rename(columns={'Servico_s': 'Servico', 'Horario': 'Horario'}, inplace=True)
     salvar_no_github(df_acumulado_agendamentos, "BASE_HISTORICA_AGENDAMENTOS.xlsx", sha_agend)
 
     df_hist_cli, sha_cli = carregar_do_github("BASE_HISTORICA_CLIENTES.xlsx")
