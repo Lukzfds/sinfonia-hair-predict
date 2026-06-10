@@ -7,9 +7,6 @@ import requests
 import re
 import io
 
-# ==========================================
-# CONFIGURAÇÃO DA PÁGINA E IDENTIDADE VISUAL
-# ==========================================
 st.set_page_config(page_title="Sinfonia Hair Predict", page_icon="✨", layout="wide")
 
 st.markdown("""
@@ -47,9 +44,6 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# CREDENCIAIS GITHUB
-# ==========================================
 try:
     TOKEN = st.secrets["GITHUB_TOKEN"]
 except Exception:
@@ -59,33 +53,28 @@ try:
 except Exception:
     REPO = ""
 
-# ==========================================
-# NOME INTERNO SEGURO PARA A COLUNA DE SERVIÇO
-# Evita problemas de encoding ao salvar/ler Excel
-# ==========================================
 COL_SERVICO = "Servico"
 COL_HORARIO = "Horario"
 
 def normalizar_colunas(df):
-    """Renomeia colunas de qualquer DataFrame lido para os nomes internos seguros."""
     mapa = {}
     for c in df.columns:
         cn = str(c).strip().lower()
-        if 'servi' in cn or 'proced' in cn:
+        # Remove caracteres não-ASCII para comparação robusta
+        cn_ascii = cn.encode('ascii', 'ignore').decode('ascii')
+        if 'servi' in cn_ascii or 'servi' in cn or 'proced' in cn:
             mapa[c] = COL_SERVICO
-        elif cn == 'data':
+        elif cn_ascii == 'data' or cn == 'data':
             mapa[c] = 'Data'
-        elif cn == 'cliente' or cn == 'nome':
-            # mantém 'Cliente' ou 'Nome' conforme o arquivo
-            if cn == 'cliente':
-                mapa[c] = 'Cliente'
-            else:
-                mapa[c] = 'Nome'
-        elif 'hor' in cn:
+        elif cn_ascii == 'cliente' or cn == 'cliente':
+            mapa[c] = 'Cliente'
+        elif cn_ascii == 'nome' or cn == 'nome':
+            mapa[c] = 'Nome'
+        elif 'hor' in cn_ascii or 'hor' in cn:
             mapa[c] = COL_HORARIO
         elif 'telef' in cn or 'fone' in cn:
             mapa[c] = 'Telefone'
-        elif 'preco' in cn or 'preço' in cn or 'valor' in cn:
+        elif 'preco' in cn_ascii or 'pre' in cn_ascii and 'o' in cn_ascii or 'valor' in cn:
             mapa[c] = 'Preco'
         elif 'profis' in cn:
             mapa[c] = 'Profissional'
@@ -94,9 +83,20 @@ def normalizar_colunas(df):
     df.rename(columns=mapa, inplace=True)
     return df
 
-# ==========================================
-# FUNÇÕES GITHUB
-# ==========================================
+def garantir_coluna_servico(df):
+    """Última linha de defesa: se COL_SERVICO não existe, tenta encontrar por qualquer meio."""
+    if COL_SERVICO in df.columns:
+        return df
+    # Tenta achar pelo nome original de qualquer forma
+    for c in df.columns:
+        cn = str(c).strip()
+        if any(p in cn.lower() for p in ['servi', 'proced', 'serv']):
+            df = df.rename(columns={c: COL_SERVICO})
+            return df
+    # Se não achar de jeito nenhum, cria vazia
+    df[COL_SERVICO] = ''
+    return df
+
 def carregar_do_github(nome_arquivo):
     if not TOKEN or not REPO:
         return None, None
@@ -109,6 +109,7 @@ def carregar_do_github(nome_arquivo):
         try:
             df = pd.read_excel(io.BytesIO(conteudo_bin))
             df = normalizar_colunas(df)
+            df = garantir_coluna_servico(df)
             return df, dados["sha"]
         except Exception:
             return None, None
@@ -129,63 +130,31 @@ def salvar_no_github(df, nome_arquivo, sha=None):
         payload["sha"] = sha
     requests.put(url, headers=headers, json=payload)
 
-# ==========================================
-# PRAZOS DE RETORNO POR SERVIÇO
-# ==========================================
 PRAZOS_SERVICOS = {
-    "Aplicacao de alongamento em gel": 30,
-    "Aplicacao de coloracao": 40,
-    "Cauterizacao/queratinizacao capilar": 30,
-    "Coloracao 1/2": 45,
-    "Coloracao capilar": 40,
-    "Coloracao gloss": 40,
-    "Corte de cabelo feminino": 60,
-    "Corte de cabelo infantil": 45,
-    "Corte de cabelo masculino": 30,
-    "Cutilagem": 15,
-    "Esmaltatacao": 7,
-    "Esmaltatacao infantil": 7,
-    "Hidratacao capilar": 15,
-    "Higienizacao capilar": 15,
-    "Lixamento dos pes": 30,
-    "Manicure": 15,
-    "Manutencoes em gel": 25,
-    "Mechas": 120,
-    "Mechas curta": 90,
-    "Modelagem capilar": 7,
-    "Modelagem especial": 7,
-    "Nutricao capilar": 15,
-    "Ofuro nos pes": 30,
-    "Pe e mao": 15,
-    "Pedicure": 15,
-    "Realinhamento termico": 90,
-    "Spa nos pes": 30,
-    # Versões com acento (fallback)
-    "Aplicação de alongamento em gel": 30,
-    "Aplicação de coloração": 40,
-    "Cauterização/queratinização capilar": 30,
-    "Coloração capilar": 40,
-    "Coloração gloss": 40,
-    "Coloração 1/2": 45,
-    "Esmaltação": 7,
-    "Esmaltação infantil": 7,
-    "Hidratação capilar": 15,
-    "Higienização capilar": 15,
-    "Lixamento dos pés": 30,
-    "Manutenções em gel": 25,
-    "Nutrição capilar": 15,
-    "Ofurô nos pés": 30,
-    "Pé e mão": 15,
-    "Realinhamento térmico": 90,
-    "Spa nos pés": 30,
+    "Aplicacao de alongamento em gel": 30, "Aplicacao de coloracao": 40,
+    "Cauterizacao/queratinizacao capilar": 30, "Coloracao 1/2": 45,
+    "Coloracao capilar": 40, "Coloracao gloss": 40,
+    "Corte de cabelo feminino": 60, "Corte de cabelo infantil": 45,
+    "Corte de cabelo masculino": 30, "Cutilagem": 15,
+    "Esmaltacao": 7, "Esmaltacao infantil": 7,
+    "Hidratacao capilar": 15, "Higienizacao capilar": 15,
+    "Lixamento dos pes": 30, "Manicure": 15, "Manutencoes em gel": 25,
+    "Mechas": 120, "Mechas curta": 90, "Modelagem capilar": 7,
+    "Modelagem especial": 7, "Nutricao capilar": 15, "Ofuro nos pes": 30,
+    "Pe e mao": 15, "Pedicure": 15, "Realinhamento termico": 90, "Spa nos pes": 30,
+    "Aplicação de alongamento em gel": 30, "Aplicação de coloração": 40,
+    "Cauterização/queratinização capilar": 30, "Coloração 1/2": 45,
+    "Coloração capilar": 40, "Coloração gloss": 40,
+    "Esmaltação": 7, "Esmaltação infantil": 7,
+    "Hidratação capilar": 15, "Higienização capilar": 15,
+    "Lixamento dos pés": 30, "Manutenções em gel": 25,
+    "Nutrição capilar": 15, "Ofurô nos pés": 30, "Pé e mão": 15,
+    "Realinhamento térmico": 90, "Spa nos pés": 30,
 }
 
 if 'niveis_web' not in st.session_state:
     st.session_state['niveis_web'] = {}
 
-# ==========================================
-# INPUTS DA BARRA LATERAL
-# ==========================================
 st.sidebar.markdown("### 📥 1. CARGA DE PLANILHAS")
 file_clientes     = st.sidebar.file_uploader("Suba a planilha 'BaseDeClientes'", type=["xlsx"])
 file_agendamentos = st.sidebar.file_uploader("Suba o 'RelatorioAgendamento'", type=["xlsx"])
@@ -195,20 +164,26 @@ if file_clientes and file_agendamentos:
     df_novos_agendamentos = normalizar_colunas(pd.read_excel(file_agendamentos))
     df_novas_clientes     = normalizar_colunas(pd.read_excel(file_clientes))
 
-    # Garante colunas obrigatórias
-    if COL_SERVICO not in df_novos_agendamentos.columns:
-        df_novos_agendamentos[COL_SERVICO] = ''
+    # --- DEBUG: mostra colunas reais para diagnóstico ---
+    with st.expander("🔍 Debug — colunas detectadas (pode fechar após confirmar)", expanded=False):
+        st.write("**Agendamentos:**", list(df_novos_agendamentos.columns))
+        st.write("**Clientes:**", list(df_novas_clientes.columns))
+
+    df_novos_agendamentos = garantir_coluna_servico(df_novos_agendamentos)
+
     if 'Cliente' not in df_novos_agendamentos.columns:
-        st.error("❌ Coluna 'Cliente' não encontrada na planilha de agendamentos.")
+        st.error("❌ Coluna 'Cliente' não encontrada. Colunas disponíveis: " + str(list(df_novos_agendamentos.columns)))
         st.stop()
     if 'Data' not in df_novos_agendamentos.columns:
-        st.error("❌ Coluna 'Data' não encontrada na planilha de agendamentos.")
+        st.error("❌ Coluna 'Data' não encontrada. Colunas disponíveis: " + str(list(df_novos_agendamentos.columns)))
+        st.stop()
+    if 'Nome' not in df_novas_clientes.columns:
+        st.error("❌ Coluna 'Nome' não encontrada na planilha de clientes. Colunas: " + str(list(df_novas_clientes.columns)))
         st.stop()
 
     df_novos_agendamentos['Cliente'] = df_novos_agendamentos['Cliente'].astype(str).str.strip()
     df_novas_clientes['Nome']        = df_novas_clientes['Nome'].astype(str).str.strip()
 
-    # Normalização de data
     if df_novos_agendamentos['Data'].dtype == 'object':
         df_novos_agendamentos['Data'] = (
             df_novos_agendamentos['Data'].astype(str).str.extract(r'(\d{2}/\d{2}/\d{4})')[0]
@@ -222,7 +197,6 @@ if file_clientes and file_agendamentos:
         )
     df_novos_agendamentos.dropna(subset=['Data'], inplace=True)
 
-    # Coluna de aniversário
     coluna_niver = 'Aniversario'
     if coluna_niver not in df_novas_clientes.columns:
         df_novas_clientes[coluna_niver] = ""
@@ -232,15 +206,11 @@ if file_clientes and file_agendamentos:
         .str.replace('nan', '', case=False).str.strip()
     )
 
-    # Aplica aniversários salvos na sessão
     for n_c, n_v in st.session_state['niveis_web'].items():
         idx = df_novas_clientes[df_novas_clientes['Nome'] == n_c].index
         if not idx.empty:
             df_novas_clientes.loc[idx, coluna_niver] = n_v
 
-    # ==========================================
-    # SIDEBAR: COMPLEMENTO DE CADASTROS
-    # ==========================================
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎂 2. COMPLEMENTO DE CADASTROS")
     clientes_sem_niver = df_novas_clientes[
@@ -268,38 +238,42 @@ if file_clientes and file_agendamentos:
     else:
         st.sidebar.success("Fichas completas!")
 
-    # ==========================================
-    # DESMEMBRAMENTO DE MÚLTIPLOS SERVIÇOS
-    # ==========================================
+    # Desmembramento de múltiplos serviços
     linhas_exp = []
     for _, lin in df_novos_agendamentos.iterrows():
         for s in re.split(r'[,/+\\]', str(lin[COL_SERVICO])):
             s = s.strip()
             if s and s.lower() != 'nan':
                 linhas_exp.append({
-                    'Cliente':     lin['Cliente'],
-                    'Data':        lin['Data'],
-                    COL_HORARIO:   lin.get(COL_HORARIO, ''),
-                    'Profissional':lin.get('Profissional', ''),
-                    'Preco':       lin.get('Preco', 0),
-                    COL_SERVICO:   s,
+                    'Cliente':      lin['Cliente'],
+                    'Data':         lin['Data'],
+                    COL_HORARIO:    lin.get(COL_HORARIO, ''),
+                    'Profissional': lin.get('Profissional', ''),
+                    'Preco':        lin.get('Preco', 0),
+                    COL_SERVICO:    s,
                 })
     df_novos_tratados = pd.DataFrame(linhas_exp)
 
-    # ==========================================
-    # SINCRONIZAÇÃO DO HISTÓRICO NO GITHUB
-    # ==========================================
+    # Se df_novos_tratados ficou vazio, garante estrutura mínima
+    if df_novos_tratados.empty:
+        df_novos_tratados = pd.DataFrame(columns=['Cliente', 'Data', COL_HORARIO, 'Profissional', 'Preco', COL_SERVICO])
+
+    # Sincronização GitHub
     df_hist_agend, sha_agend = carregar_do_github("BASE_HISTORICA_AGENDAMENTOS.xlsx")
     if df_hist_agend is not None and not df_hist_agend.empty:
         for col_obrig, default in [('Data', pd.NaT), (COL_SERVICO, ''), ('Cliente', ''), (COL_HORARIO, '')]:
             if col_obrig not in df_hist_agend.columns:
                 df_hist_agend[col_obrig] = default
         df_hist_agend['Data'] = pd.to_datetime(df_hist_agend['Data'], errors='coerce')
-        df_acumulado_agendamentos = pd.concat(
-            [df_hist_agend, df_novos_tratados], ignore_index=True
-        )
+        df_acumulado_agendamentos = pd.concat([df_hist_agend, df_novos_tratados], ignore_index=True)
     else:
         df_acumulado_agendamentos = df_novos_tratados.copy()
+
+    # Garantia final antes do groupby
+    df_acumulado_agendamentos = garantir_coluna_servico(df_acumulado_agendamentos)
+    for col_obrig, default in [('Data', pd.NaT), ('Cliente', ''), (COL_HORARIO, '')]:
+        if col_obrig not in df_acumulado_agendamentos.columns:
+            df_acumulado_agendamentos[col_obrig] = default
 
     df_acumulado_agendamentos.drop_duplicates(
         subset=['Data', COL_HORARIO, 'Cliente', COL_SERVICO], keep='last', inplace=True
@@ -308,28 +282,32 @@ if file_clientes and file_agendamentos:
 
     df_hist_cli, sha_cli = carregar_do_github("BASE_HISTORICA_CLIENTES.xlsx")
     if df_hist_cli is not None and not df_hist_cli.empty:
-        df_acumulado_clientes = pd.concat(
-            [df_hist_cli, df_novas_clientes], ignore_index=True
-        )
+        df_acumulado_clientes = pd.concat([df_hist_cli, df_novas_clientes], ignore_index=True)
     else:
         df_acumulado_clientes = df_novas_clientes.copy()
 
     df_acumulado_clientes.drop_duplicates(subset=['Nome'], keep='last', inplace=True)
     salvar_no_github(df_acumulado_clientes, "BASE_HISTORICA_CLIENTES.xlsx", sha_cli)
 
-    # ==========================================
-    # MOTOR ANALÍTICO DE RETORNO
-    # ==========================================
+    # DIAGNÓSTICO: revela colunas reais antes de crashar
+    st.warning("🔍 Diagnóstico — colunas do df_acumulado_agendamentos:")
+    st.code(str(list(df_acumulado_agendamentos.columns)))
+    st.info(f"Coluna buscada: '{COL_SERVICO}' | Existe: {COL_SERVICO in df_acumulado_agendamentos.columns}")
+    if COL_SERVICO not in df_acumulado_agendamentos.columns:
+        st.error("Coluna de servico nao encontrada. Veja os nomes acima e informe ao suporte.")
+        st.stop()
+
+    # Motor analítico
     df_ultimos = df_acumulado_agendamentos.groupby(
         ['Cliente', COL_SERVICO], as_index=False
     )['Data'].max()
 
-    lista_op   = []
-    data_hoje  = datetime.now()
+    lista_op  = []
+    data_hoje = datetime.now()
 
     for _, lin in df_ultimos.iterrows():
-        srv = lin[COL_SERVICO]
-        prazo = PRAZOS_SERVICOS.get(srv, None)
+        srv   = lin[COL_SERVICO]
+        prazo = PRAZOS_SERVICOS.get(srv)
         if prazo is None:
             continue
         dt_id  = pd.to_datetime(lin['Data']) + timedelta(days=prazo)
@@ -346,30 +324,21 @@ if file_clientes and file_agendamentos:
 
     df_ret = pd.DataFrame(lista_op)
     if not df_ret.empty:
-        df_ret = df_ret.sort_values(by='Dias de Atraso', ascending=False).drop_duplicates(
-            subset=['Cliente'], keep='first'
-        )
+        df_ret = df_ret.sort_values(by='Dias de Atraso', ascending=False).drop_duplicates(subset=['Cliente'], keep='first')
 
-    # ==========================================
-    # MOTOR DE ANIVERSÁRIOS
-    # ==========================================
     lista_aniv = []
     dt_alvo    = data_hoje + timedelta(days=2)
     for _, lin in df_acumulado_clientes.iterrows():
-        col_niv = coluna_niver if coluna_niver in df_acumulado_clientes.columns else None
-        if not col_niv:
-            continue
-        token_nv = str(lin[col_niv]).split('/')
+        if coluna_niver not in df_acumulado_clientes.columns:
+            break
+        token_nv = str(lin[coluna_niver]).split('/')
         if len(token_nv) == 2:
             try:
                 if int(token_nv[0]) == dt_alvo.day and int(token_nv[1]) == dt_alvo.month:
                     lista_aniv.append({
-                        'Cliente':            lin['Nome'],
-                        COL_SERVICO:          'Aniversario Especial',
-                        'Ultima Visita':      '-',
-                        'Data Ideal Retorno': dt_alvo.strftime('%d/%m/%Y'),
-                        'Dias de Atraso':     999,
-                        'Tipo de Gatilho':    'Aniversario',
+                        'Cliente': lin['Nome'], COL_SERVICO: 'Aniversario Especial',
+                        'Ultima Visita': '-', 'Data Ideal Retorno': dt_alvo.strftime('%d/%m/%Y'),
+                        'Dias de Atraso': 999, 'Tipo de Gatilho': 'Aniversario',
                     })
             except (ValueError, TypeError):
                 continue
@@ -377,42 +346,27 @@ if file_clientes and file_agendamentos:
     frames = [f for f in [df_ret, pd.DataFrame(lista_aniv)] if not f.empty]
     df_unificado = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
-    # ==========================================
-    # CARDS DE RESUMO
-    # ==========================================
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown(
-            f"""<div class="card-historico">
-                <span style="color:#A0A0A0;font-size:11px;font-weight:bold;text-transform:uppercase;">Banco de Dados Acumulado</span>
-                <h2 style="margin:5px 0 0 0;color:#FFC0CB;font-size:32px;">{len(df_acumulado_agendamentos)}
-                    <span style="font-size:14px;font-weight:normal;color:#FFFFFF;">linhas</span>
-                </h2>
-            </div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="card-historico">
+            <span style="color:#A0A0A0;font-size:11px;font-weight:bold;text-transform:uppercase;">Banco de Dados Acumulado</span>
+            <h2 style="margin:5px 0 0 0;color:#FFC0CB;font-size:32px;">{len(df_acumulado_agendamentos)}
+                <span style="font-size:14px;font-weight:normal;color:#FFFFFF;">linhas</span>
+            </h2></div>""", unsafe_allow_html=True)
     with col2:
         tot_g = len(df_unificado) if not df_unificado.empty else 0
-        st.markdown(
-            f"""<div class="card-gatilhos">
-                <span style="color:#A0A0A0;font-size:11px;font-weight:bold;text-transform:uppercase;">Fila de Oportunidades</span>
-                <h2 style="margin:5px 0 0 0;color:#F4CE14;font-size:32px;">{tot_g}
-                    <span style="font-size:14px;font-weight:normal;color:#FFFFFF;">clientes hoje</span>
-                </h2>
-            </div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="card-gatilhos">
+            <span style="color:#A0A0A0;font-size:11px;font-weight:bold;text-transform:uppercase;">Fila de Oportunidades</span>
+            <h2 style="margin:5px 0 0 0;color:#F4CE14;font-size:32px;">{tot_g}
+                <span style="font-size:14px;font-weight:normal;color:#FFFFFF;">clientes hoje</span>
+            </h2></div>""", unsafe_allow_html=True)
 
-    # ==========================================
-    # PAINEL DE ABORDAGENS
-    # ==========================================
     if not df_unificado.empty:
         df_unificado.sort_values(by='Dias de Atraso', ascending=False, inplace=True)
-        df_final = pd.merge(
-            df_unificado, df_acumulado_clientes,
-            left_on='Cliente', right_on='Nome', how='inner'
-        )
-
+        df_final = pd.merge(df_unificado, df_acumulado_clientes, left_on='Cliente', right_on='Nome', how='inner')
         colunas_del = [c for c in df_final.columns if 'cpf' in c.lower()]
         df_final.drop(columns=colunas_del + ['Nome'], inplace=True, errors='ignore')
         df_final.loc[df_final['Tipo de Gatilho'] == 'Aniversario', 'Dias de Atraso'] = 0
-
         if 'Telefone' not in df_final.columns:
             df_final['Telefone'] = ''
 
@@ -420,44 +374,35 @@ if file_clientes and file_agendamentos:
         st.markdown("""
             <div style="background-color:#222222;padding:10px 15px;border-radius:6px 6px 0 0;border:1px solid #333;font-weight:bold;font-size:13px;margin-bottom:2px;">
                 <div style="display:flex;justify-content:space-between;color:#FFC0CB;">
-                    <div style="width:15%;">CLIENTE</div>
-                    <div style="width:15%;">ALERTA</div>
-                    <div style="width:10%;">ÚLT. VISITA</div>
-                    <div style="width:10%;">RETORNO IDEAL</div>
-                    <div style="width:10%;">ATRASO</div>
-                    <div style="width:30%;">MENSAGEM SUGERIDA</div>
+                    <div style="width:15%;">CLIENTE</div><div style="width:15%;">ALERTA</div>
+                    <div style="width:10%;">ÚLT. VISITA</div><div style="width:10%;">RETORNO IDEAL</div>
+                    <div style="width:10%;">ATRASO</div><div style="width:30%;">MENSAGEM SUGERIDA</div>
                     <div style="width:10%;text-align:center;">AÇÃO</div>
                 </div>
-            </div>
-        """, unsafe_allow_html=True)
+            </div>""", unsafe_allow_html=True)
 
         for _, linha in df_final.iterrows():
-            p_nome  = linha['Cliente'].split()[0]
-            tel_raw = re.sub(r'[^\d]', '', str(linha.get('Telefone', '')))
+            p_nome       = linha['Cliente'].split()[0]
+            tel_raw      = re.sub(r'[^\d]', '', str(linha.get('Telefone', '')))
             if tel_raw and not tel_raw.startswith('55') and len(tel_raw) >= 10:
                 tel_raw = '55' + tel_raw
-
             servico_exib = linha[COL_SERVICO]
 
             if linha['Tipo de Gatilho'] == 'Aniversario':
                 b_style = "background-color:#3a2d15;color:#F4CE14;border:1px solid #F4CE14;padding:3px 8px;border-radius:20px;"
                 b_lbl   = "🎁 Aniversário"
                 atr_t   = "<span style='color:#F4CE14;font-weight:bold;'>Faltam 2 dias</span>"
-                msg     = (
-                    f"Olá, {p_nome}! 🥳✨ Nós do Sinfonia Hair sabemos que seu aniversário está chegando! "
-                    f"Preparamos um presente surpresa exclusivo para você. "
-                    f"Venha nos visitar nesta semana e retire seu presente! 🥰"
-                )
+                msg     = (f"Olá, {p_nome}! 🥳✨ Nós do Sinfonia Hair sabemos que seu aniversário está chegando! "
+                           f"Preparamos um presente surpresa exclusivo para você. "
+                           f"Venha nos visitar nesta semana e retire seu presente! 🥰")
             else:
-                b_style   = "background-color:#1d2d3a;color:#8ecae6;padding:3px 8px;border-radius:20px;"
-                b_lbl     = f"⏳ {servico_exib}"
-                atr_t     = f"<span style='color:#ff4d4d;font-weight:bold;'>{linha['Dias de Atraso']} dias</span>"
-                serv_msg  = servico_exib[0].lower() + servico_exib[1:] if servico_exib else ''
-                msg       = (
-                    f"Olá, {p_nome}! ✨ Notamos aqui no Sinfonia Hair que sua última {serv_msg} "
-                    f"já está no tempo ideal de retoque. "
-                    f"Que tal aproveitar para agendar um horário conosco e manter seus cuidados em dia? 🥰"
-                )
+                b_style  = "background-color:#1d2d3a;color:#8ecae6;padding:3px 8px;border-radius:20px;"
+                b_lbl    = f"⏳ {servico_exib}"
+                atr_t    = f"<span style='color:#ff4d4d;font-weight:bold;'>{linha['Dias de Atraso']} dias</span>"
+                serv_msg = servico_exib[0].lower() + servico_exib[1:] if servico_exib else ''
+                msg      = (f"Olá, {p_nome}! ✨ Notamos aqui no Sinfonia Hair que sua última {serv_msg} "
+                            f"já está no tempo ideal de retoque. "
+                            f"Que tal aproveitar para agendar um horário conosco e manter seus cuidados em dia? 🥰")
 
             l_wa = f"https://wa.me/{tel_raw}?text={urllib.parse.quote(msg)}" if tel_raw else "#"
 
@@ -480,8 +425,7 @@ if file_clientes and file_agendamentos:
                             </a>
                         </div>
                     </div>
-                </div>
-            """, unsafe_allow_html=True)
+                </div>""", unsafe_allow_html=True)
     else:
         st.info("ℹ️ Nenhuma cliente elegível para retorno localizada com os filtros de hoje.")
 
@@ -494,5 +438,4 @@ else:
             <p style="color:#A0A0A0;font-size:14px;max-width:500px;margin:10px auto;">
                 Faça o upload das planilhas para carregar o Dashboard de Inteligência Comercial.
             </p>
-        </div>
-    """, unsafe_allow_html=True)
+        </div>""", unsafe_allow_html=True)
